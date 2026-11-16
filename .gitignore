@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Secrets
+.env
+
+# Data and model artefacts (too big for git; re-create with scripts)
+data/raw/
+data/processed/
+models/*
+!models/.gitkeep
+
+# Frontend
+node_modules/
+web/dist/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
