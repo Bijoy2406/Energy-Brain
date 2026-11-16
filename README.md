@@ -13,6 +13,19 @@ Work is tracked in [GitHub Issues](https://github.com/Bijoy2406/Energy-Brain/iss
 Phase 0 (setup) in progress. MVP and preliminary submission due **20 Nov 2026, 23:59 BST**; final submission
 locks **24 Dec 2026, 24:00 BST**.
 
+## Work plan (phases)
+
+Each issue carries a phase label. Milestones: **MVP + Preliminary Submission (Nov 20)** and
+**Final Submission (Dec 24)**.
+
+| Phase | Issues | What it covers |
+| --- | --- | --- |
+| phase-0: setup | #1–#4 | Repo skeleton, site/asset spec, team roles and mentor notes, preliminary submission |
+| phase-1: data & training | #5–#12 | Dhaka weather (NASA POWER + Open-Meteo), simulated solar output (pvlib), synthetic load, tariff and CO2 factor lookup, outage calendar, solar and load forecasters |
+| phase-2: agents | #13–#26 | Schemas and orchestrator, the seven agents, FastAPI backend, plus P1 extras (cloud event, Pareto, Bangla, override, PDF report) |
+| phase-3: frontend | #27–#33 | React scaffold, schedule chart, slider, chat, baseline comparison, deploy, polish |
+| phase-4: final submission | #34–#40 | YouTube video, Data & AI provenance, tooling/MCP disclosure, prompt library, pitch, interviews, final checklist |
+
 ## Architecture (planned)
 
 | Agent | Job | Issue |
