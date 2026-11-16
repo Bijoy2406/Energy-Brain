@@ -1,0 +1,67 @@
+# Energy Brain - simulated MVP site (issue #2)
+#
+# One mid-size garment (RMG) factory near Dhaka. EVERY number below is an ASSUMPTION
+# for the MVP simulation, not measured data. Each line says why the value was chosen.
+# If the team gets real numbers from a factory or installer, replace them here and
+# update docs/site-spec.md. Units are in the key names (kw, kwh, kwp, pct, c, h).
+# Loaded and validated by src/energy_brain/config.py (run: pytest).
+
+site:
+  name: "Demo RMG factory, Ashulia"
+  type: garment_factory            # PRD: RMG factories are the first customer segment
+  latitude: 23.90                  # approx. Ashulia/Savar industrial belt, Dhaka district (rounded)
+  longitude: 90.32                 # approx., rounded; only used for weather/solar lookups
+  timezone: Asia/Dhaka             # all timestamps are local Bangladesh time (UTC+6)
+
+planning:
+  slot_minutes: 15                 # PRD: 15-minute resolution
+  horizon_hours: 24                # PRD: day-ahead plan -> 96 slots
+
+grid:
+  max_import_kw: 1500              # assumed sanctioned load, above peak demand with headroom
+  export_allowed: false            # assumption: no export/net metering in the MVP (simpler, conservative)
+
+load:
+  peak_kw: 1200                    # assumed peak demand of a mid-size factory during production
+  base_kw: 250                     # assumed night/holiday load (security, lighting, cold rooms, servers)
+  weekend_days: [Friday]           # Friday is the weekly holiday in Bangladesh
+  shifts:                          # assumed single main shift + typical overtime
+    - {start: "08:00", end: "17:00"}
+    - {start: "17:00", end: "20:00"}   # overtime, modelled at reduced load in #7
+
+solar:
+  capacity_kwp: 600                # assumed rooftop PV size for a large factory roof
+  tilt_deg: 23                     # roughly equal to site latitude, a common fixed-tilt rule of thumb
+  azimuth_deg: 180                 # facing south (northern hemisphere)
+  system_losses_pct: 14            # PVWatts default total system loss assumption
+
+battery:
+  capacity_kwh: 1000               # assumed; about 1 h of evening production load
+  max_charge_kw: 500               # assumed 0.5C charge rate
+  max_discharge_kw: 500            # assumed 0.5C discharge rate
+  round_trip_efficiency: 0.90      # typical for lithium-ion systems (assumption)
+  soc_min_pct: 10                  # reserve kept for outages / battery health
+  soc_max_pct: 95                  # avoid full charge for battery health
+  initial_soc_pct: 50              # start of each simulated day
+
+hvac:
+  rated_kw: 250                    # assumed cooling load share of the factory (part of peak_kw)
+  min_kw_when_occupied: 100        # assumed minimum cooling while workers are on the floor
+  comfort_min_c: 24                # assumed indoor comfort band during working hours
+  comfort_max_c: 28
+  max_precool_hours: 2             # assumed: cooling can be shifted up to 2 h earlier
+
+ev_fleet:                          # electric delivery vans charged overnight at the factory
+  vehicles: 6                      # assumed small fleet
+  battery_kwh: 40                  # assumed per-vehicle usable battery
+  charger_kw: 11                   # assumed AC charger per vehicle
+  arrival_time: "18:00"            # assumed: vans return after deliveries
+  departure_time: "07:00"          # assumed: vans leave before the morning shift
+  arrival_soc_pct: 30              # assumed state of charge on arrival
+  required_departure_soc_pct: 90   # hard constraint: vans must leave with at least this
+
+generator:
+  rated_kva: 1000                  # assumed diesel genset size for backup during load-shedding
+  rated_kw: 800                    # 1000 kVA x 0.8 power factor
+  min_load_pct: 30                 # assumed: avoid running diesel engines at very low load
+  fuel_l_per_kwh: 0.27             # assumed average fuel use at typical load; refine in #8
