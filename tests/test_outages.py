@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from energy_brain.data.outages import get_daily_outage_mask
+from energy_brain.data.outages import generate_outage_events, get_daily_outage_mask
 
 DHAKA = ZoneInfo("Asia/Dhaka")
 
@@ -36,9 +36,8 @@ def test_outages_sample_exists_and_loads():
 
 
 def test_outage_calendar_seasonal_distribution():
-    proc_path = Path(__file__).resolve().parents[1] / "data" / "processed" / "outages.parquet"
-    assert proc_path.exists()
-    df = pd.read_parquet(proc_path)
+    # Generated in memory: data/processed/ is git-ignored, so it does not exist in CI.
+    df = generate_outage_events()
 
     assert len(df) > 200, "Expected at least 200 outage events over 3 years"
 
