@@ -1,0 +1,28 @@
+{
+  "solar": {
+    "persistence_mae_kw": 20.29,
+    "persistence_rmse_kw": 46.117,
+    "lightgbm_p50_mae_kw": 1.919,
+    "lightgbm_p50_rmse_kw": 4.748,
+    "mae_improvement_pct": 90.54,
+    "p10_p90_coverage_pct": 89.59,
+    "test_year": 2024,
+    "train_years": [
+      2022,
+      2023
+    ]
+  },
+  "load": {
+    "persistence_mae_kw": 106.923,
+    "persistence_rmse_kw": 257.781,
+    "lightgbm_p50_mae_kw": 2.231,
+    "lightgbm_p50_rmse_kw": 8.551,
+    "mae_improvement_pct": 97.91,
+    "p10_p90_coverage_pct": 83.99,
+    "test_year": 2024,
+    "train_years": [
+      2022,
+      2023
+    ]
+  }
+}
