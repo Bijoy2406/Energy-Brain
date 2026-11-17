@@ -1,0 +1,36 @@
+# Energy Brain - Economic & Environmental Signals (Issue #8)
+#
+# Real, official Bangladesh values for electricity tariffs, grid carbon intensity,
+# and diesel generation costs.
+# All numbers have citable sources and as-of dates.
+# Detailed citations and methodology in docs/data-sources.md.
+
+tariff:
+  customer_class: "MT-3 (11kV Medium Tension Industry)"
+  utility: "BREB / DPDC / DESCO / BPDB"
+  regulation: "BERC Retail Electricity Tariff Order"
+  as_of: "2024-02"
+  source: "Bangladesh Energy Regulatory Commission (BERC)"
+  source_url: "https://berc.org.bd"
+  currency: "BDT"
+  rates:
+    flat_bdt_per_kwh: 9.43       # Daytime working hours (06:00 to 17:00)
+    peak_bdt_per_kwh: 11.78      # Evening peak window (17:00 to 23:00)
+    off_peak_bdt_per_kwh: 8.49   # Night / early morning off-peak (23:00 to 06:00)
+  demand_charge_bdt_per_kw_month: 90.0
+
+grid_emission:
+  factor_tco2_per_mwh: 0.62
+  factor_kg_per_kwh: 0.62        # Derived: 0.62 tCO2 / 1000 kWh = 0.62 kg CO2 / kWh
+  as_of: "2022"
+  authority: "Department of Environment (DoE), Ministry of Environment, Forest and Climate Change"
+  report: "UNFCCC Designated National Authority (DNA) / First Biennial Update Report"
+  source_url: "https://doe.gov.bd"
+
+diesel:
+  price_bdt_per_l: 107.00        # Retail diesel price in Dhaka
+  as_of: "2024-05"
+  price_authority: "Bangladesh Petroleum Corporation (BPC) / Energy and Mineral Resources Division"
+  source_url: "https://bpc.gov.bd"
+  emission_factor_kg_per_l: 2.68 # Direct combustion CO2 emission factor per litre
+  emission_source: "IPCC Guidelines for National Greenhouse Gas Inventories (Energy Volume) / UK DEFRA"
