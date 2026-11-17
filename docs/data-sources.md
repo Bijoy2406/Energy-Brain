@@ -150,7 +150,55 @@ python -m energy_brain.data.synthetic_load
 ---
 
 ## 4. Tariffs, Emission Factors & Fuel Costs (Issue #8)
-*(Documented during Issue #8 implementation with BERC schedules and national grid carbon factors.)*
+
+Every economic and carbon value is verified from official Bangladesh regulatory gazettes or international environmental reporting standards.
+
+### Summary Table of Signals
+
+| Parameter | Value | Unit | Source & Authority | As-of Date |
+| :--- | :---: | :---: | :--- | :---: |
+| **Grid Tariff: Peak** | 11.78 | BDT/kWh | BERC Retail Electricity Tariff Order (MT-3 Industry) | Feb 2024 |
+| **Grid Tariff: Flat** | 9.43 | BDT/kWh | BERC Retail Electricity Tariff Order (MT-3 Industry) | Feb 2024 |
+| **Grid Tariff: Off-Peak** | 8.49 | BDT/kWh | BERC Retail Electricity Tariff Order (MT-3 Industry) | Feb 2024 |
+| **Grid Demand Charge** | 90.00 | BDT/kW/mo | BERC Distribution Utility Tariff Schedule (DPDC/BREB) | Feb 2024 |
+| **Grid Carbon Factor** | 0.62 | $\text{kg CO}_2/\text{kWh}$ | Department of Environment (DoE) / UNFCCC BUR1 | 2022 |
+| **Local Diesel Price** | 107.00 | BDT/litre | Bangladesh Petroleum Corporation (BPC) circular | May 2024 |
+| **Diesel $\text{CO}_2$ Factor** | 2.68 | $\text{kg CO}_2/\text{litre}$ | 2006 IPCC Guidelines for National GHG Inventories | 2006/2023 |
+
+### 1. Electricity Tariff (BERC MT-3 Category)
+- **Customer Category:** Category MT-3 (11 kV Medium Tension Industrial), applicable to commercial and manufacturing consumers with sanctioned load between $50\text{ kW}$ and $5\text{ MW}$ operating their own 11kV substation.
+- **Time-of-Use (TOU) Windows:**
+  - **Peak (17:00 to 23:00):** $11.78\text{ BDT/kWh}$ (Evening grid stress window)
+  - **Off-Peak (23:00 to 06:00):** $8.49\text{ BDT/kWh}$ (Nighttime low-demand window)
+  - **Flat (06:00 to 17:00):** $9.43\text{ BDT/kWh}$ (Daytime manufacturing hours)
+- **Source Link:** Bangladesh Energy Regulatory Commission ([berc.org.bd](https://berc.org.bd)) retail tariff notification.
+
+### 2. National Grid Emission Factor
+- **Factor:** $0.62\text{ tCO}_2/\text{MWh} = 0.62\text{ kg CO}_2/\text{kWh}$.
+- **Authority:** Department of Environment (DoE), Ministry of Environment, Forest and Climate Change, Government of Bangladesh.
+- **Reporting Context:** Bangladesh's Designated National Authority (DNA) greenhouse gas accounting and First Biennial Update Report (BUR1) submitted to the UNFCCC.
+- **Source Link:** Department of Environment ([doe.gov.bd](https://doe.gov.bd)).
+
+### 3. Diesel Fuel Price & Emissions
+- **Retail Fuel Price:** $107.00\text{ BDT/litre}$.
+  - **Authority:** Bangladesh Petroleum Corporation (BPC) under the formula-based automatic fuel pricing mechanism initiated by the Ministry of Power, Energy and Mineral Resources in 2024.
+  - **Source Link:** Bangladesh Petroleum Corporation ([bpc.gov.bd](https://bpc.gov.bd)).
+- **Emission Factor:** $2.68\text{ kg CO}_2\text{ per litre burned}$.
+  - **Authority:** 2006 IPCC Guidelines for National Greenhouse Gas Inventories (Volume 2: Energy, Chapter 3) and UK DEFRA-DESNZ conversion factors for commercial gas oil / diesel combustion.
+
+### 4. Economic & Carbon Trade-off Analysis
+With the generator fuel rate specified as $0.27\text{ L/kWh}$ in `config/site.yaml`:
+- **Diesel Electricity Cost:** $0.27\text{ L/kWh} \times 107.00\text{ BDT/L} = \mathbf{28.89\text{ BDT/kWh}}$
+  - Compare with Grid: $8.49\text{ BDT}$ (off-peak), $9.43\text{ BDT}$ (flat), $11.78\text{ BDT}$ (peak).
+  - *Diesel is **2.45x more expensive** than peak grid power and **3.40x more expensive** than off-peak grid power.*
+- **Diesel Carbon Intensity:** $0.27\text{ L/kWh} \times 2.68\text{ kg CO}_2/\text{L} = \mathbf{0.724\text{ kg CO}_2/\text{kWh}}$
+  - Compare with Grid: $\mathbf{0.620\text{ kg CO}_2/\text{kWh}}$.
+  - *Diesel emits **16.7% more $\text{CO}_2$ per kWh** than the national grid.*
+
+This cost/carbon differential creates the mathematical foundation for the Planner agent to prioritize solar and battery storage over diesel backup during load-shedding events.
+
+### Configuration File
+Parameters are stored in `config/signals.yaml` and loaded via `energy_brain.data.signals_lookup.load_signals_config()`.
 
 ---
 
