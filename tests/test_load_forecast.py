@@ -11,6 +11,15 @@ from energy_brain.config import load_site_config
 from energy_brain.forecast.load import predict
 
 DHAKA = ZoneInfo("Asia/Dhaka")
+ROOT = Path(__file__).resolve().parents[1]
+
+# data/processed/ and models/ are git-ignored, so predict() can only run where the pipeline was run locally.
+needs_trained_load = pytest.mark.skipif(
+    not (ROOT / "data" / "processed" / "load.parquet").exists()
+    or not (ROOT / "data" / "processed" / "weather.parquet").exists()
+    or not (ROOT / "models" / "load_p50.txt").exists(),
+    reason="needs local data/processed/{load,weather}.parquet and models/load_*.txt",
+)
 
 
 def test_load_forecast_metrics_beats_persistence():
@@ -32,6 +41,7 @@ def test_load_forecast_metrics_beats_persistence():
     assert load_m["p10_p90_coverage_pct"] >= 75.0
 
 
+@needs_trained_load
 def test_load_predict_shape_and_monotonicity():
     day = datetime.datetime(2024, 6, 3, 0, 0, tzinfo=DHAKA)
     pred_df = predict(day)
@@ -55,6 +65,7 @@ def test_load_predict_shape_and_monotonicity():
     assert (p50 <= p90 + 1e-5).all(), "Violation: p50 > p90"
 
 
+@needs_trained_load
 def test_load_predict_friday_weekend_behavior():
     cfg = load_site_config()
     # June 7, 2024 is a Friday (weekly holiday in Bangladesh)
