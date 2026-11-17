@@ -108,7 +108,44 @@ python -m energy_brain.data.simulate_pv
 ---
 
 ## 3. Site Load Profile (Issue #7)
-*(Documented during Issue #7 implementation with factory shift schedule and temperature-dependent HVAC modeling.)*
+
+### Rationale & Synthetic Modeling Approach
+Garment (RMG) factories treat raw smart-meter power readings as proprietary commercial data. The 15-minute load profile is therefore synthetically generated using engineering assumptions documented in `config/site.yaml` and ambient temperature from the real weather series.
+
+The model explicitly decouples **inflexible base factory load** from **flexible thermal cooling load (HVAC)** because the Planner agent schedules flexible loads while treating base load as an immutable boundary condition.
+
+### Load Components
+1. **Inflexible Base Load (`base_kw`):**
+   - **Standby Baseline (250 kW):** Nighttime and off-shift hours (20:30 to 07:30) power essential perimeter lighting, servers, security, and raw fabric store ventilation.
+   - **Morning Ramp-up (07:30 to 08:00):** Factory floor lights, compressors, boilers, and sewing lines initialize.
+   - **Main Shift (08:00 to 17:00):** Full production lines active (~950 kW nominal machinery load). Lunch break (13:00 to 14:00) models a ~18% partial shutdown of active sewing lines.
+   - **Overtime Shift (17:00 to 20:00):** Typical in Bangladesh export manufacturing, running partial finishing/ironing lines (~600 kW machinery load).
+   - **Evening Ramp-down (20:00 to 20:30):** Production lines power down to standby base load (250 kW).
+   - **Stochastic Noise:** Modeled using an autoregressive process ($AR(1)$ with $\phi = 0.85$, $\sigma = 1.5\%$) with fixed seed 42 to represent natural operational variance across machines.
+
+2. **Bangladesh Calendar & Holiday Rules:**
+   - **Weekly Weekend:** Friday is the statutory weekly holiday in Bangladesh (`config/site.yaml: weekend_days: [Friday]`). Base machinery load remains at standby (250 kW). Saturday is a normal full working day.
+   - **Public Holidays:** Major national holidays (Feb 21, Mar 26, Apr 14, May 1, Dec 16) and multi-day Eid festival windows (Eid-ul-Fitr and Eid-ul-Adha for 2022–2024) are modeled as standby days.
+
+3. **Flexible Thermal HVAC Load (`hvac_kw`):**
+   - **Driven by Ambient Temperature:** Coupled directly to 15-minute ambient temperature from `weather.parquet`.
+   - **Occupied Minimum (100 kW):** Enforces minimum air handling and ventilation on the factory floor while workers are present, regardless of outdoor temperature.
+   - **Temperature Scaling:** For temperatures exceeding the comfort threshold ($24.0^\circ\text{C}$), cooling scales proportionally up to rated capacity ($250\text{ kW}$) during severe heatwaves ($> 38^\circ\text{C}$).
+   - **Unoccupied Hours:** Set to 0.0 kW (with minimal 15 kW setback if nighttime temperatures exceed $32^\circ\text{C}$).
+
+4. **Total Site Load (`total_kw`):**
+   - Calculated as `total_kw = base_kw + hvac_kw`.
+   - Reaches ~1,200 kW peak during hot summer shift hours, matching the site sanctioned demand capacity.
+
+### File Locations
+- **Processed Series:** `data/processed/load.parquet` (105,216 slots, columns: `timestamp`, `base_kw`, `hvac_kw`, `total_kw`)
+- **Committed Sample:** `data/sample/load_sample.parquet` and `data/sample/load_sample.csv` (672 slots / 1 week)
+- **Verification Notebook:** `notebooks/load_check.ipynb` and `reports/load_sanity_week.png`
+
+### Re-creating the Load Profile
+```powershell
+python -m energy_brain.data.synthetic_load
+```
 
 ---
 
