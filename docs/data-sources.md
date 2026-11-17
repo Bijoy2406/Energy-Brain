@@ -203,4 +203,34 @@ Parameters are stored in `config/signals.yaml` and loaded via `energy_brain.data
 ---
 
 ## 5. Outage Scenarios (Issue #9)
-*(Documented during Issue #9 implementation with synthetic load-shedding generator.)*
+
+### Rationale & Industrial Load-Shedding Context
+Grid outages (load-shedding) are a frequent reality for industrial zones in Bangladesh, particularly in peri-urban manufacturing hubs like Ashulia and Savar. When the national grid fails, factories must immediately start diesel backup generators to keep production lines running at high fuel expense ($28.89\text{ BDT/kWh}$) and higher carbon emissions ($0.724\text{ kg CO}_2/\text{kWh}$).
+
+The outage calendar models rotational load-shedding to demonstrate how Energy Brain:
+1. **Pre-charges the battery** from solar or cheaper off-peak grid electricity before a planned outage window.
+2. **Pre-cools the factory** via the flexible HVAC system prior to the outage.
+3. **Discharges the battery** during the outage, minimizing or completely avoiding the need to run the diesel generator.
+
+### Synthetic Outage Modeling Rules
+- **Evening Peak Deficit (18:00 to 22:00):** Most frequent scenario, reflecting nationwide residential peak demand surge straining the transmission grid. Duration: 1.0 to 2.0 hours (4 to 8 slots).
+- **Summer Afternoon Deficit (13:00 to 16:00):** Occurs during extreme summer heatwaves (April–September) driven by national cooling demand spikes. Duration: 1.0 to 1.5 hours.
+- **Feeder Maintenance (10:00 to 12:00):** Occasional daytime distribution feeder maintenance.
+- **Seasonal Frequency:**
+  - **Summer/Monsoon (April – September):** 3 to 4 days/week experience outages (60% daily probability on working days).
+  - **Winter/Dry season (October – March):** 1 to 2 days/week experience outages (25% daily probability).
+  - **Fridays & Holidays:** Significantly reduced probability (< 10%) due to nationwide industrial closures reducing grid strain.
+
+### Handover to the Signal Agent (#15)
+The helper function `get_daily_outage_mask(day_start, outages_df, n_slots=96)` maps the outage intervals into an array of 96 booleans:
+- `True` indicates the grid is unavailable during that 15-minute slot.
+- Any outage overlapping a 15-minute slot rounds up to the full slot (as mandated by `interfaces.md`).
+
+### File Locations
+- **Processed Calendar:** `data/processed/outages.parquet` (409 events, 570.2 total outage hours across 2022–2024, columns: `start`, `end`, `duration_hours`, `reason`)
+- **Committed Sample:** `data/sample/outages_sample.parquet` and `data/sample/outages_sample.csv` (1-week test sample)
+
+### Re-creating the Outage Calendar
+```powershell
+python -m energy_brain.data.outages
+```
