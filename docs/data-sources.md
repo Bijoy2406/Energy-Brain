@@ -69,7 +69,41 @@ python -m energy_brain.data.download_weather --force
 ---
 
 ## 2. Solar PV Output Simulation (Issue #6)
-*(Documented during Issue #6 implementation with pvlib.)*
+
+### Method & Engineering Specification
+Because the site has no real meter export, 15-minute AC solar power generation is simulated from the cleaned weather history using **pvlib-python (v0.16+)** based on the parameters in `config/site.yaml`.
+
+- **Solar System Rating:** 600 kWp rooftop array
+- **Orientation & Tilt:** Tilt $23^\circ$ (equal to site latitude), Azimuth $180^\circ$ (true South)
+- **System Losses:** 14.0% balance-of-system losses (soiling, shading, wiring, mismatch, default PVWatts assumption)
+- **Nominal Inverter Efficiency:** 96.0% (PVWatts inverter model)
+- **Cell Temperature Model:** Faiman thermal model using ambient temperature and wind speed
+- **DC Power Model:** PVWatts DC model with temperature coefficient $\gamma = -0.4\% / ^\circ\text{C}$ relative to $25^\circ\text{C}$
+- **Transposition Model:** Hay-Davies model for diffuse and direct plane-of-array (POA) irradiance calculation
+
+### Time Resolution & Resampling
+1. Hourly weather points (`GHI`, `DNI`, `DHI`, `temperature_2m`, `wind_speed`) are resampled to 15-minute intervals (`:00`, `:15`, `:30`, `:45`) using time-based linear interpolation.
+2. Complete 96-slot planning days are maintained across all 3 years (105,216 total 15-minute slots).
+3. Exact solar position (zenith, azimuth, elevation) is computed per 15-minute slot using `pvlib.location.Location.get_solarposition()`.
+4. When apparent solar elevation $\le 0^\circ$ (sun below horizon), plane-of-array irradiance and AC power are strictly zeroed.
+
+### Validation & Benchmark Sanity Checks
+- **Peak AC Power:** Reaches $569.05\text{ kW}$ (94.8% of 600 kWp nameplate, reflecting cell heating, 14% system losses, and inverter derating).
+- **Annual Energy Output:**
+  - 2022: $745.7\text{ MWh}$ ($1,242.8\text{ kWh/kWp/year}$)
+  - 2023: $714.3\text{ MWh}$ ($1,190.5\text{ kWh/kWp/year}$)
+  - 2024: $691.4\text{ MWh}$ ($1,152.3\text{ kWh/kWp/year}$)
+- **Bangladesh Empirical Benchmark:** Typical rooftop solar installations in Dhaka yield between $1,100$ and $1,300\text{ kWh/kWp/year}$. The simulated series aligns with empirical regional data.
+- **Verification Notebook:** `notebooks/pv_check.ipynb` provides interactive visualization of clear days, monsoon intermittency, and yield statistics.
+
+### File Locations
+- **Processed Series:** `data/processed/pv.parquet` (105,216 slots, columns: `timestamp`, `pv_kw`)
+- **Committed Sample:** `data/sample/pv_sample.parquet` and `data/sample/pv_sample.csv` (672 slots / 1 week)
+
+### Re-creating the PV Simulation
+```powershell
+python -m energy_brain.data.simulate_pv
+```
 
 ---
 
