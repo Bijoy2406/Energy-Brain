@@ -11,5 +11,18 @@
       2022,
       2023
     ]
+  },
+  "load": {
+    "persistence_mae_kw": 106.923,
+    "persistence_rmse_kw": 257.781,
+    "lightgbm_p50_mae_kw": 2.231,
+    "lightgbm_p50_rmse_kw": 8.551,
+    "mae_improvement_pct": 97.91,
+    "p10_p90_coverage_pct": 83.99,
+    "test_year": 2024,
+    "train_years": [
+      2022,
+      2023
+    ]
   }
 }
