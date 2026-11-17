@@ -12,6 +12,14 @@ import pytest
 from energy_brain.forecast.solar import predict
 
 DHAKA = ZoneInfo("Asia/Dhaka")
+ROOT = Path(__file__).resolve().parents[1]
+
+# data/processed/ and models/ are git-ignored, so predict() can only run where the pipeline was run locally.
+needs_trained_solar = pytest.mark.skipif(
+    not (ROOT / "data" / "processed" / "weather.parquet").exists()
+    or not (ROOT / "models" / "solar_p50.txt").exists(),
+    reason="needs local data/processed/weather.parquet and models/solar_*.txt",
+)
 
 
 def test_forecast_metrics_beats_persistence():
@@ -33,6 +41,7 @@ def test_forecast_metrics_beats_persistence():
     assert solar_m["p10_p90_coverage_pct"] >= 75.0
 
 
+@needs_trained_solar
 def test_solar_predict_shape_and_monotonicity():
     day = datetime.datetime(2024, 6, 3, 0, 0, tzinfo=DHAKA)
     pred_df = predict(day)
