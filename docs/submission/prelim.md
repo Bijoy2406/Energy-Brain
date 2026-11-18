@@ -10,14 +10,14 @@ Each section below is ready to paste. Square-bracket items still need filling.
 
 ## Checklist
 
-- [ ] Team has at least 3 members on the portal
-- [ ] Basics filled
-- [ ] Problem statement filled
-- [ ] Solution filled
-- [ ] Target user filled
+- [x] Team has at least 3 members (Bijoy2406, AsifAvaas, ovishkh); confirm all three are on the portal
+- [x] Basics filled (text below)
+- [x] Problem statement filled (text below)
+- [x] Solution filled (text below, with measured results)
+- [x] Target user filled (text below)
 - [ ] Prototype link / repo added and link check shows **PASS** (repo must be public, or add a Judge Access Note)
-- [ ] Team roles pasted from `team-and-mentor.md`
-- [ ] Mentor engagement notes pasted from `team-and-mentor.md` (after a real mentor session)
+- [ ] Team roles pasted from `team-and-mentor.md` (leader and third member's name still to fill)
+- [x] Mentor engagement notes: not required for this team (team decision); leave blank or write N/A if the portal asks
 - [ ] Team reviewed the text together
 - [ ] Leader clicked Submit (target: 19 Nov); portal shows **Submitted**
 - [ ] Update before 20 Nov 23:59 BST if the MVP improves
@@ -38,10 +38,12 @@ electricity cost and CO2, and explain every decision.
 > garment factories. It forecasts tomorrow's solar output and site load with uncertainty bands, then an optimiser
 > schedules the battery, flexible loads (cooling, EV charging) and diesel generator around tariff peaks,
 > load-shedding and grid carbon. An operator moves one slider between cheapest and cleanest, and can ask "why"
-> about any decision; an AI explainer answers using only numbers from the system. Savings are measured by
-> backtesting against rule-based baselines on real Dhaka weather data.
+> about any decision; an AI explainer answers using only numbers from the system. On a 2024 out-of-sample
+> backtest (366 days, real Dhaka weather, simulated site) it cut daily cost 4.7 % vs a solar-first rule and
+> 2.2 % vs a time-of-use rule, and cut diesel use by 66 % vs the solar-first rule. Savings come mostly from
+> load-shedding days.
 
-**Primary team language:** [English / Bangla — choose]
+**Primary team language:** English
 
 ## 2. Problem statement
 
@@ -60,7 +62,7 @@ forecast uncertainty, and does not explain its decisions to the engineer who mus
 
 **Measurable outcome we change:** Daily energy cost (BDT) and CO2 (kg) for the site, plus diesel generator hours,
 measured against two rule-based baselines on the same days and assets. We report the measured percentages with
-the baselines and emission factors stated; no number is claimed before the backtest produces it.
+the baselines and emission factors stated (results in section 3).
 
 ## 3. Proposed solution
 
@@ -85,17 +87,36 @@ schedule for the battery, cooling, EV charging and generator, with expected cost
 The optimiser makes every decision; the LLM only explains, so a hallucination cannot change a schedule.
 Comfort, EV departure charge and battery limits are hard constraints, and the operator approves or overrides.
 
-**Key features:** cost↔carbon slider; uncertainty-aware planning; load-shedding preparation (pre-charge,
-pre-cool); grounded "why" answers; backtested savings report.
+**Key features:** cost↔carbon slider; uncertainty-aware planning; load-shedding preparation (battery
+pre-charge and generator planning); grounded "why" answers whose numbers are checked against tool outputs;
+backtested savings report.
 
 **User journey:** Evening: the engineer opens tomorrow's plan and checks expected cost and CO2 → moves the slider
 if the owner wants lower carbon → asks "why does the generator run at 7 PM?" and gets an answer citing the
-forecast, tariff and battery state → approves. During the day, if clouds cut solar, the Risk agent re-plans.
-Monthly, the owner gets savings and CO2 against the baseline.
+forecast, tariff and battery state → approves. Every plan is first checked by the Risk agent at pessimistic (P10) solar and re-planned with a
+battery reserve if it would fail; a live "cloud event" re-plan is planned for the demo. Monthly, the owner gets
+savings and CO2 against the baseline (report export planned).
 
 **Mapping to the challenge:** Specific ask "cost and emissions savings" → dual cost/CO2 objective with measured
 savings. Details "forecasting + optimization + agents" → quantile forecasting, MILP optimisation, and a
 multi-agent system with a grounded explainer.
+
+**Results so far (2024 backtest, out-of-sample, `reports/backtest.json`, reproducible with
+`python -m energy_brain.evaluator`):** 366 days at cost/CO2 weight 0.5, same assets and constraints for all
+methods, settled against actual solar and load.
+
+| | vs solar-first rule | vs time-of-use rule |
+| --- | --- | --- |
+| Cost | 4.7 % lower (2.08 M BDT) | 2.2 % lower (0.96 M BDT) |
+| Cost on load-shedding days (138) / other days (228) | 8.2 % / 1.9 % lower | 4.8 % / 0.2 % lower |
+| CO2 | 0.3 % higher | 0.2 % lower |
+| Generator hours / diesel | 134 h vs 190 h; 10.9 kL vs 31.7 kL (66 % less) | 134 h vs 189 h; 10.9 kL vs 25.3 kL (57 % less) |
+
+Honest limits: the load, PV and load-shedding calendar are synthetic or simulated; forecast error (solar MAE
+1.9 kW, load MAE 2.2 kW) is measured with observed weather as the forecast input, so real day-ahead error would be
+larger; the grid emission factor is a flat 0.62 kg/kWh, so shifting grid use barely changes CO2 and the CO2 gain
+is the diesel cut; the saving versus the time-of-use rule is small on days without load-shedding. We do not claim
+more than these figures.
 
 **Data (honest scope):** Real historical weather for Dhaka (NASA POWER / Open-Meteo); solar output simulated from
 it; a simulated factory with documented assumptions and a synthetic load profile; published Bangladesh tariff and
@@ -112,7 +133,8 @@ markets with time-of-use tariffs and unreliable grids.
 
 https://github.com/Bijoy2406/Energy-Brain
 
-[Add the live demo link here if deployed before the deadline.]
+Backend (FastAPI), seven agents, backtest and an Explainer with traceable numbers are in the repo; run
+instructions are in `README.md` and `docs/api.md`. [Add the live demo link here if deployed before the deadline.]
 
 ## 6. Team roles
 
@@ -120,4 +142,5 @@ https://github.com/Bijoy2406/Energy-Brain
 
 ## 7. Initial mentor engagement notes
 
-[Paste from `team-and-mentor.md` after the mentor session.]
+Not required for this team (team decision). If the portal insists on text: "No mentor session held for the
+preliminary; we will seek mentor feedback before the final submission."
