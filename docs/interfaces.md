@@ -555,6 +555,50 @@ once. Nothing raises into the API.
 `explainer_system.md`, `explainer_retry.md`, `explainer_ground.md`; demo questions with tool-checked key facts
 in `explainer_demo_questions.yaml` (real day 2024-07-02, w = 0.5).
 
+### Dashboard API (#21, `energy_brain.api`)
+
+FastAPI backend for the React dashboard. Full reference with examples: [`docs/api.md`](api.md); machine-readable
+contract: [`docs/openapi.json`](openapi.json) (regenerate with `python -m energy_brain.api export-openapi`; a test
+fails when it is stale). Run: `uvicorn energy_brain.api.app:app --reload --port 8000`, docs at `/docs`.
+
+| Endpoint | Returns |
+| --- | --- |
+| `GET /days` | demo days of `config/demo_days.yaml` (validated) + tomorrow: weekday, workday/holiday, outage blocks, forecast tier (predicted, then planned) |
+| `POST /plan {date, w}` | `PlanResponse`: `plan` (`PlanResult`) plus the `forecast`, `signals` and `assets` it was solved on, `safe` (`planner.is_safe`), `risk_ok`, `banners` (`explainer.agent.banners`), `forecast_fallback` / `signal_fallback` (note + parsed fields), `forecast_source`, `weight` (w rounded to 0.01) and `weight_requested`, `cached`, `computed_at` |
+| `GET /backtest`, `GET /backtest/days?weight=` | caveats, headline, summary, config of `reports/backtest.json`; per-day adjusted/raw cost and CO2 of the optimiser and both baselines |
+| `POST /explain {date, w, question}` | `ExplainerAnswer` + `date`, `weight`, `cached`, `cached_recorded_at`, `cached_model`, `live_error` |
+| `GET /health` | data/models/report presence, `llm_key_configured` (bool only), cache and warm-up stats |
+
+Rules:
+
+- **Planning range.** Dates run from 2022-01-01 to tomorrow (site time). Days after 2024-12-31 use the analog-day
+  fallbacks and are flagged.
+- **Thread safety.** `/plan` and `/explain` use the same cached `PlanContext` (`PlanContext.from_agents`, LRU of
+  256 keyed by date and w rounded to 0.01, single-flight). One lock serialises the agents and the solver;
+  endpoints are sync (thread pool); LLM calls run outside the lock.
+- **Unsafe or fallback plans** return 200 with `safe=false` / `banners`, never as a success that looks
+  executable. The Signal agent's note, which is missing from `PlanResult.notes` (known gap below), reaches the
+  dashboard through `signal_fallback` and the banners.
+- **Explainer failures** (no key, rate limit, network, ...) return 200 with `error` set (the Explainer never
+  raises). The API's own limits:
+  - 5 questions per minute per client IP and 30 per minute in total (429);
+  - 500-character questions;
+  - 2 concurrent LLM calls.
+- **Stored demo answers** (`reports/explainer_demo_answers.json`, recorded live by
+  `python -m energy_brain.api record-demo-answers`):
+  - **When used.** Only when the live call fails (`EB_EXPLAIN_CACHE=fallback`, default), or first
+    (`prefer`, demo day).
+  - **Match.** The date and weight must be the same, and the question must match exactly after trimming and
+    lower-casing.
+  - **Re-checks.** Every stored tool call, re-run on the current plan, must return the identical result, and
+    `verify_answer` must pass.
+  - **Banners** are recomputed, and the response says `cached: true`.
+- **Errors.** Error bodies are `{"detail": {"code", "message", "retry_after_s"}}` (422 validation errors keep
+  FastAPI's standard body), with no stack trace and no secret. CORS allows `http://localhost:5173` /
+  `http://127.0.0.1:5173` plus `EB_CORS_ORIGINS`.
+- **Without data or models.** Without `data/processed` and `models/` the API starts and plans with the Forecast
+  agent's sample-data tiers, and says so in every response.
+
 ## 5. Orchestrator
 
 `run_plan(start, weight, *, forecast_agent, signal_agent, assets, planner, risk, max_replans=3)`:

@@ -1,0 +1,23 @@
+# Demo days for the dashboard (GET /days, issue #21). Edit freely; validated when the API starts
+# (energy_brain.api.days.load_demo_days): unique ISO dates, a non-empty label, at most one `demo: true`.
+#
+# Choose days inside 2022-01-01..2024-12-31: only there do the trained models (tier-0 forecast) run, and
+# reports/backtest.json covers 2024. The API adds a dynamic "tomorrow" entry itself (always a fallback forecast).
+# Labels are shown in the dashboard. The descriptions come from reports/backtest.json (settled solar, outage
+# slots) and the outage calendar; re-check them if the data changes.
+days:
+  - date: "2024-07-02"
+    label: "Demo day: evening outage 18:00-20:00, monsoon"
+    demo: true      # the day of prompts/explainer_demo_questions.yaml (w = 0.5)
+  - date: "2024-01-16"
+    label: "Winter workday with a long outage"
+  - date: "2024-03-09"
+    label: "Sunniest day of 2024, no outage (Saturday is a workday)"
+  - date: "2024-08-21"
+    label: "Cloudiest day of 2024, with an outage"
+  - date: "2024-05-18"
+    label: "Most outage slots of 2024"
+  - date: "2024-01-05"
+    label: "Weekly off-day (Friday)"
+  - date: "2024-02-21"
+    label: "Public holiday (Language Martyrs' Day)"
