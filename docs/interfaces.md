@@ -385,17 +385,21 @@ backtest share is #20's job.
    `AlignmentError`.
 2. Planner solves with reserve 0. Risk checks it.
 3. While Risk says not ok and fewer than `max_replans` re-plans: reserve = max(Risk's margin, current + 50 kWh),
-   re-plan, re-check.
-4. Returns the last `PlanResult` with `risk` filled (`replans` counted). If Risk still fails, it does **not**
-   raise: `optimal` becomes `feasible` and Risk's reasons are appended to `notes`.
+   re-plan, re-check. It **stops early** (no more re-plans) when the plan is unsafe (`planner.is_safe`) or when
+   every structured Risk failure says `fixable=no` (`risk.parse_reason`); free-text reasons never stop it.
+4. Returns the **best plan seen**, not simply the last: safe and Risk-ok, else safe (the latest), else the latest
+   unsafe one. So a re-plan that makes the Planner infeasible never replaces an earlier safe plan. `risk` is that
+   plan's report with `replans` = re-plans actually run. It never raises for a failing Risk: if the returned plan
+   still fails, `optimal` becomes `feasible` and Risk's reasons are appended to `notes`. Risk notes
+   (`RISK NOTE:` lines) of an ok plan are appended to `notes` under "Risk notes:". If an earlier attempt was
+   returned or re-planning stopped early, `notes` says so.
 
 Real agents: `run_plan(start, weight, **energy_brain.defaults.build_default_agents())` uses
 `ModelForecastAgent` (#14), `CalendarSignalAgent` (#15), `AssetAgent` (#16), `MilpPlanner` (#17) and
 `P10RiskAgent` (#18). Override any of them by keyword, e.g. `build_default_agents(risk=MyRisk())`.
 
-**Known orchestrator limitations** (follow-up, not changed in #18): `run_plan` returns the *last* plan, so a
-re-plan that makes the Planner infeasible replaces an earlier safe plan; it keeps re-planning (+50 kWh) when
-Risk says `fixable=no` or the plan is unsafe; and Risk notes reach `PlanResult.notes` only when Risk fails.
+**Known gap:** Signal agent notes (`SIGNAL FALLBACK:`) still do not reach `PlanResult.notes` (needs
+`SignalTable.note`, a contract change to agree with the team).
 
 ## 6. Handover formats for the phase-1 teammate
 
