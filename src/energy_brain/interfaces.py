@@ -87,7 +87,7 @@ class RiskAgent(Protocol):
         signals: SignalTable,
         assets: AssetConstraints,
     ) -> RiskReport:
-        """Re-check ``plan`` under pessimistic conditions (P10 solar, P90 load).
+        """Re-check ``plan`` under pessimistic conditions (default P10 solar, P50 load; docs/interfaces.md).
 
         Return ``ok=False`` with human-readable ``reasons`` and a larger ``reserve_margin_kwh``
         (kWh of battery to hold back) when hard constraints would break. Must not modify the plan.

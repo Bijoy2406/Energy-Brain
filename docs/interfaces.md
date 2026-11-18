@@ -123,8 +123,8 @@ co2  = Σ grid_import_kw·h·grid_co2 + Σ generator_kw·h·fuel_l_per_kwh·dies
 
 | Field | Meaning |
 | --- | --- |
-| `ok` | false = plan breaks a hard constraint under P10 solar / P90 load |
-| `reasons` | human-readable list |
+| `ok` | false = plan leaves demand unserved under the stress scenario (default **P10 solar / P50 load**), or the plan is unsafe. A P90-load replay is advisory only |
+| `reasons` | one stable line per finding (`RISK FAIL:` / `RISK NOTE:`, see Risk agent rules), parse with `energy_brain.risk.parse_reason` |
 | `reserve_margin_kwh` | battery reserve the Planner should keep on the next re-plan |
 | `replans` | re-plans run before this report (set by the orchestrator) |
 
@@ -303,6 +303,80 @@ calendar itself.
 **Known gap:** signal notes do not reach `PlanResult.notes` (or `fallback_used`). The follow-up is a
 `SignalTable.note` field plus an orchestrator change, to be agreed with the team.
 
+### Risk agent rules (#18, `energy_brain.risk.P10RiskAgent`)
+
+`P10RiskAgent(solar="p10", load="p50", advisory_load="p90").check(plan, forecast, signals, assets) -> RiskReport`.
+A pure function of its four inputs: nothing is read from disk, cached or modified, so #22 (cloud event) can
+pass an "actual" forecast (e.g. `P10RiskAgent(solar="p50", load="p50")` on an edited `Forecast`). It never
+raises for a bad plan; `replans` is left at 0 (the orchestrator sets it). `agent.replay(...)` /
+`energy_brain.risk.stress_replay(plan, forecast, signals, assets, solar, load)` return the per-slot
+`StressReplay` behind the check.
+
+**Order of checks.**
+
+1. **Unsafe plan** (`planner.is_safe(plan)` false): `ok=False`, one `check=unsafe_plan` reason whose `detail`
+   quotes the Planner's `NOT SAFE TO EXECUTE` note, `reserve_margin_kwh` = the plan's own reserve
+   (`fixable=no`). A day that is infeasible at P50 cannot be fixed by more reserve. The schedule is not replayed.
+2. **Gating scenario** (solar P10, load P50 by default, issue #18 / FR-06): the fixed plan is replayed with the
+   recourse model below. Every contiguous block of slots with unserved energy is one `RISK FAIL` line
+   (`check=unserved_energy`) and makes `ok` false.
+3. **Notes** (`RISK NOTE`, never change `ok`): `check=advisory_unserved` when the same replay at
+   `advisory_load` (P90) leaves energy unserved; `check=end_soc_short` when the battery ends the stressed day
+   below `initial_soc_kwh` (the end-of-day rule is a Planner convenience, not a safety limit). So a plan can be
+   `ok=True` with notes in `reasons`.
+
+**Recourse model (reactive operator).** The plan fixes grid, battery, generator, HVAC and EV for every slot.
+Per slot the gap is `(stress load − planned base load) + max(0, planned solar used − stress solar)` plus any
+planned discharge the battery can no longer deliver. The operator closes it in this order:
+
+1. solar the plan curtailed (if the stress solar exceeds what the plan used);
+2. cut the planned battery charge;
+3. extra grid import up to `max_import_kw` − planned import, **never in an outage slot**;
+4. extra battery discharge up to `max_discharge_kw` and down to `soc_min_kwh` (the reserve exists for this, so
+   the raised Planner floor does not apply);
+5. the generator: up to `rated_kw`, or **started** (≥ `min_kw`) where the plan had it off; minimum-load surplus
+   backs off discharge, grid and solar, then charges the battery.
+
+HVAC (occupied minimum = comfort) and EV charging are never cut. What is still missing is unserved energy,
+tagged `at_risk=comfort` (occupied slot), `ev` (EV charging in a required slot, `rules.ev_required_slots`) or
+`base_load`. The battery carries its stressed SoC forward (later planned discharge is capped by what is
+stored); in non-outage slots with no gap, spare grid recharges it back towards the planned SoC.
+
+**Reserve margin.** `reserve_margin_kwh` = plan reserve + the largest *fixable* block's unserved kWh / η (the
+stored energy the next plan must hold back), capped at `soc_max − soc_min`. It never decreases and asks for
+exactly the missing energy; the orchestrator then uses `max(report, current + 50)`. `limit` per block:
+
+| `limit` | Meaning | `fixable` |
+| --- | --- | --- |
+| `energy` | battery hit `soc_min_kwh` below its power limit; the run fits in the battery window | yes (margin grows) |
+| `capacity` | energy-limited, but the run (slots before and through the block where any dispatch must discharge: `load + hvac + ev − solar − available grid − generator rated > 0`) needs more than `soc_max − soc_min` | no |
+| `power` | battery at `max_discharge_kw`, generator at `rated_kw`, grid unavailable or at its limit | no |
+
+A block with several kinds lists them (`energy,power`) and is not fixable. `fixable=no` blocks add nothing to
+the margin, so an unfixable day gets the same margin back (the orchestrator still steps +50 kWh; see the known
+limitations in section 5).
+
+**Reason format** (one line, stable; `energy_brain.risk.parse_reason(line)` returns the fields plus
+`kind=fail|note`, `format_reason(fields, fail=...)` builds one):
+
+```
+RISK FAIL: check=<code>; scenario=solar_<q>,load_<q>; slots=<a-b,c|none>; shortfall_kwh=<x.x>; limit=<energy|capacity|power[,...]|none>; at_risk=<comfort,ev,base_load|none>; reserve_kwh=<old>-><new>; fixable=<yes|no>; detail=<free text>
+```
+
+`RISK NOTE:` lines have the same fields. `detail` is free text (`;` replaced by `,`), always last; for
+`unserved_energy` it names the grid state and the recourse used (`grid +x kWh, battery +y kWh, generator +z kWh,
+charge cut +w kWh`). Check codes: `unserved_energy`, `unsafe_plan`, `replay_error` (fail);
+`advisory_unserved`, `end_soc_short` (note). Example (wrapped here):
+
+`RISK FAIL: check=unserved_energy; scenario=solar_p10,load_p50; slots=55; shortfall_kwh=8.9; limit=energy;
+at_risk=comfort; reserve_kwh=0->9.41648; fixable=yes; detail=8.9 kWh unserved, grid unavailable (outage),
+operator recourse used: generator +45.5 kWh` (stub cloudy day; the generator is already at `rated_kw` and the
+battery hits `soc_min_kwh` in the last outage slot). Reserve values use Python's `:g` format.
+
+**Measured so far** (placeholders, not pitch numbers): the test day set (`tests/test_risk_agent.py`, stub days
+plus two `data/sample` days in 2024-06) is 7/7 feasible at solar P10 / load P50 after re-plan; the real
+backtest share is #20's job.
+
 ## 5. Orchestrator
 
 `run_plan(start, weight, *, forecast_agent, signal_agent, assets, planner, risk, max_replans=3)`:
@@ -316,8 +390,12 @@ calendar itself.
    raise: `optimal` becomes `feasible` and Risk's reasons are appended to `notes`.
 
 Real agents: `run_plan(start, weight, **energy_brain.defaults.build_default_agents())` uses
-`ModelForecastAgent` (#14), `CalendarSignalAgent` (#15), `AssetAgent` (#16) and `MilpPlanner` (#17), with
-`StubRisk` until #18 lands. Override any of them by keyword, e.g. `build_default_agents(risk=MyRisk())`.
+`ModelForecastAgent` (#14), `CalendarSignalAgent` (#15), `AssetAgent` (#16), `MilpPlanner` (#17) and
+`P10RiskAgent` (#18). Override any of them by keyword, e.g. `build_default_agents(risk=MyRisk())`.
+
+**Known orchestrator limitations** (follow-up, not changed in #18): `run_plan` returns the *last* plan, so a
+re-plan that makes the Planner infeasible replaces an earlier safe plan; it keeps re-planning (+50 kWh) when
+Risk says `fixable=no` or the plan is unsafe; and Risk notes reach `PlanResult.notes` only when Risk fails.
 
 ## 6. Handover formats for the phase-1 teammate
 
@@ -345,7 +423,8 @@ outage from 13:00 to 14:00 sets slots 52–55 to `true`. Partial-slot outages ro
 `energy_brain.assets.AssetAgent`, a drop-in replacement for `StubAssetProvider` (same shape; it differs only
 in marking off-days unoccupied). The real forecast agent (#14) is `energy_brain.forecast.ModelForecastAgent`,
 a drop-in replacement for `StubForecastAgent`. The real signal agent (#15) is
-`energy_brain.signals.CalendarSignalAgent`, a drop-in replacement for `StubSignalAgent`.
+`energy_brain.signals.CalendarSignalAgent`, a drop-in replacement for `StubSignalAgent`. The real Risk agent
+(#18) is `energy_brain.risk.P10RiskAgent`, a drop-in replacement for `StubRisk`.
 
 ```python
 from datetime import datetime
