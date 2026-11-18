@@ -100,6 +100,18 @@ ruff check .    # lint
 
 CI runs both on every pull request.
 
+## Run the API (dashboard backend)
+
+```bash
+uvicorn energy_brain.api.app:app --reload --port 8000
+```
+
+Open http://localhost:8000/docs. Endpoints, response shapes and settings (`EB_CORS_ORIGINS`, `EB_EXPLAIN_CACHE`,
+`EB_WARMUP`) are in [docs/api.md](docs/api.md); the contract for the frontend is
+[docs/openapi.json](docs/openapi.json). Real plans need `data/processed/` and `models/`
+([docs/data-sources.md](docs/data-sources.md)); without them the API still runs on the sample-data fallback and
+says so in every response. `/explain` needs `LLM_API_KEY` in `.env` (Groq).
+
 ## Using the site config
 
 ```python
