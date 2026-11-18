@@ -6,6 +6,8 @@ from datetime import datetime, timedelta
 import pytest
 
 from energy_brain.orchestrator import AlignmentError, run_plan
+from energy_brain.planner import UNSAFE_PREFIX, is_safe
+from energy_brain.risk import format_reason
 from energy_brain.schemas import PlanResult, RiskReport, SignalTable
 from energy_brain.stubs import (
     FailOnceRisk,
@@ -117,3 +119,98 @@ def test_bad_arguments_raise(start):
             planner=StubPlanner(),
             risk=StubRisk(),
         )
+
+
+# --- best plan seen, early stop, Risk notes (orchestrator follow-up to #18) ---
+
+
+def _fail(fixable: str, check: str = "unserved_energy") -> str:
+    return format_reason({"check": check, "fixable": fixable, "detail": "test"})
+
+
+class UnsafeAfterPlanner(StubPlanner):
+    """Safe plan at reserve 0, unsafe (infeasible) plan whenever the reserve is raised."""
+
+    def __init__(self) -> None:
+        self.margins: list[float] = []
+
+    def plan(self, forecast, signals, assets, weight, reserve_margin_kwh=0.0):
+        self.margins.append(reserve_margin_kwh)
+        result = super().plan(forecast, signals, assets, weight, reserve_margin_kwh)
+        if reserve_margin_kwh > 0:
+            return result.model_copy(
+                update={"status": "infeasible", "notes": [f"{UNSAFE_PREFIX}: test", *result.notes]}
+            )
+        return result
+
+
+class ReasonRisk:
+    """Fails with the given reasons every time."""
+
+    def __init__(self, reasons: list[str], margin: float = 10.0) -> None:
+        self.reasons, self.margin, self.calls = reasons, margin, 0
+
+    def check(self, plan, forecast, signals, assets):
+        self.calls += 1
+        return RiskReport(ok=False, reasons=self.reasons, reserve_margin_kwh=self.margin)
+
+
+class NoteRisk:
+    def check(self, plan, forecast, signals, assets):
+        note = format_reason({"check": "end_soc_short", "detail": "x"}, fail=False)
+        return RiskReport(ok=True, reasons=[note], reserve_margin_kwh=plan.reserve_margin_kwh)
+
+
+def test_unfixable_risk_stops_replanning(start):
+    planner = RecordingPlanner(status="optimal")
+    risk = ReasonRisk([_fail("no")])
+    result = _run(start, planner=planner, risk=risk, max_replans=3)
+    assert planner.margins == [0.0] and risk.calls == 1
+    assert result.risk.replans == 0 and not result.risk.ok
+    assert any("fixable=no" in n for n in result.notes)
+
+
+def test_fixable_risk_still_replans(start):
+    planner = RecordingPlanner(status="optimal")
+    _run(start, planner=planner, risk=ReasonRisk([_fail("yes")]), max_replans=2)
+    assert len(planner.margins) == 3
+
+
+def test_mixed_fixable_reasons_keep_replanning(start):
+    planner = RecordingPlanner(status="optimal")
+    _run(start, planner=planner, risk=ReasonRisk([_fail("no"), _fail("yes")]), max_replans=1)
+    assert len(planner.margins) == 2
+
+
+def test_unsafe_replan_never_replaces_safe_plan(start):
+    planner = UnsafeAfterPlanner()
+    result = _run(start, planner=planner, risk=ReasonRisk([_fail("yes")]), max_replans=3)
+    assert planner.margins == [0.0, 50.0]  # one re-plan, then it stops (the re-plan was unsafe)
+    assert is_safe(result) and result.reserve_margin_kwh == 0.0
+    assert any("attempt 1 of 2" in n for n in result.notes)
+    assert not result.risk.ok and result.risk.replans == 1
+
+
+def test_unsafe_first_plan_is_returned_without_replanning(start):
+    class AlwaysUnsafe(StubPlanner):
+        calls = 0
+
+        def plan(self, *a, **k):
+            AlwaysUnsafe.calls += 1
+            r = super().plan(*a, **k)
+            return r.model_copy(update={"status": "infeasible", "notes": [f"{UNSAFE_PREFIX}: test"]})
+
+    result = _run(start, planner=AlwaysUnsafe(), risk=AlwaysFailRisk(), max_replans=3)
+    assert AlwaysUnsafe.calls == 1 and not is_safe(result)
+    assert result.risk.replans == 0
+
+
+def test_risk_notes_reach_plan_notes_when_ok(start):
+    result = _run(start, risk=NoteRisk())
+    assert result.risk.ok
+    assert "Risk notes:" in result.notes
+    assert any(n.startswith("RISK NOTE:") for n in result.notes)
+
+
+def test_no_extra_notes_when_ok_and_silent(start):
+    assert _run(start).notes == _run(start, planner=StubPlanner()).notes
