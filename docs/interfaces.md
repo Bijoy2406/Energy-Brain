@@ -137,7 +137,7 @@ co2  = Σ grid_import_kw·h·grid_co2 + Σ generator_kw·h·fuel_l_per_kwh·dies
 | `schedule`, `totals` | as above |
 | `risk` | RiskReport (always filled by the orchestrator) |
 | `status` | `optimal` / `feasible` / `infeasible` / `fallback` |
-| `solve_seconds` | solver wall time |
+| `solve_seconds` | planning wall time (MilpPlanner: the whole `plan()` call) |
 | `reserve_margin_kwh` | reserve this plan was solved with |
 | `fallback_used` | true if any fallback (forecast or plan) was used |
 | `notes` | list of messages for the operator / Explainer |
@@ -155,6 +155,35 @@ co2  = Σ grid_import_kw·h·grid_co2 + Σ generator_kw·h·fuel_l_per_kwh·dies
 The Planner may **not** relax: energy balance; grid limit and zero import during outages; battery SoC limits
 (plus reserve margin) and power limits; HVAC limits, occupied minimum and comfort band; EV departure energy,
 plug-in window and charger limit; generator off or within [min_kw, rated_kw]. It may not edit its inputs.
+
+### Planner rules (#17, `energy_brain.planner.MilpPlanner`)
+
+How the MILP turns the constraints above into per-slot rules (`planner/rules.py`, shared by the model, the
+fallback and the checker `planner.find_violations`):
+
+- **End-of-day battery:** `battery_soc_kwh[-1] >= initial_soc_kwh`. The battery must end the day at or above
+  its starting charge, so savings never come from draining it. Risk and the Evaluator baselines should apply
+  the same rule for a fair comparison.
+- **Reserve margin:** the SoC floor in slot t is `max(soc_min, min(soc_min + reserve, soc_max,
+  initial_soc + η·max_charge_kw·h·(t + 1)))`, i.e. the raised floor is reached as fast as full-power charging
+  allows when it is above the starting charge. A large reserve can make a day infeasible (e.g. when the
+  battery is needed to cover an outage).
+- **EV across midnight:** `energy_required_kwh` is due in the plugged-in slots before `departure_slot`. If the
+  window wraps midnight (`arrival_slot >= departure_slot`) those are the slots `[0, departure_slot)`; the
+  evening slots from `arrival_slot` on allow charging (≤ `charger_kw`) but require nothing (that energy belongs
+  to the next day's plan). Otherwise `[arrival_slot, departure_slot)`; `departure_slot = 0` means end of day.
+- **HVAC:** `[min_kw_when_occupied, rated_kw]` when occupied; `[0, rated_kw]` up to `max_precool_hours` before
+  an occupied slot; 0 otherwise. `min_kw_when_occupied` is the comfort stand-in: there is no thermal model in
+  the contract, so the °C band is not modelled and pre-cooling never pays off.
+- **Objective:** `w·cost/cost_ref + (1 − w)·co2/co2_ref`, where `cost_ref` / `co2_ref` are the totals of a
+  rule-based reference schedule (no arbitrage, no shifting), floored at 1. w = 0.5 trades 1 % of cost against
+  1 % of CO2.
+- **Status:** `optimal`; `feasible` (time limit hit, best solution used); `fallback` (solver failed, the
+  rule-based schedule passed every check); `infeasible` (no schedule meets every hard constraint).
+- **Unsafe plans are machine-detectable:** `status == "infeasible"`, `fallback_used == True` and `notes[0]`
+  starts with `"NOT SAFE TO EXECUTE"` (`planner.UNSAFE_PREFIX`; helper `planner.is_safe(plan)`). Its schedule is
+  diagnostic only and may break the energy balance. The Explainer, Risk and API must refuse to act on it.
+- `solve_seconds` is the wall time of the whole `plan()` call (build, solve, checks).
 
 ## 5. Orchestrator
 
