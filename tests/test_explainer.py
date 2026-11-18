@@ -697,3 +697,52 @@ def test_live_groq_answer_is_verified(ctx):
         pytest.skip("model blocked at the Groq project level")
     assert ans.error is None, ans.answer
     assert ans.verified or ans.refusal_reason is not None
+
+
+# --------------------------------------------------------------------------- demo questions
+
+from pathlib import Path  # noqa: E402
+
+import yaml  # noqa: E402
+
+ROOT = Path(__file__).resolve().parents[1]
+DEMO = yaml.safe_load((ROOT / "prompts" / "explainer_demo_questions.yaml").read_text(encoding="utf-8"))
+HAVE_DATA = all(
+    (ROOT / "data" / "processed" / f).exists() for f in ("pv.parquet", "load.parquet", "weather.parquet")
+)
+HAVE_MODELS = all(
+    (ROOT / "models" / f"{k}_p{q}.txt").exists() for k in ("solar", "load") for q in (10, 50, 90)
+)
+
+
+def _field(obj, path: str):
+    for part in path.replace("]", "").replace("[", ".").split("."):
+        obj = obj[int(part)] if isinstance(obj, list) else obj[part]
+    return obj
+
+
+def test_demo_file_is_well_formed():
+    qs = DEMO["questions"]
+    answers = [q for q in qs if q["expect"] == "answer"]
+    refusals = [q for q in qs if isinstance(q["expect"], dict)]
+    assert len(answers) == 5 and len(refusals) == 4
+    assert {q["expect"]["refusal"] for q in refusals} == {"missing_data", "off_topic", "change_request"}
+    for q in answers:
+        for f in q["key_facts"]:
+            assert f["tool"] in TOOL_NAMES
+
+
+@pytest.mark.skipif(not (HAVE_DATA and HAVE_MODELS), reason="needs data/processed and models (not in CI)")
+def test_demo_facts_hold_on_the_real_day():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from energy_brain.defaults import build_default_agents
+
+    day = datetime.fromisoformat(DEMO["day"]).replace(tzinfo=ZoneInfo("Asia/Dhaka"))
+    real = PlanContext.from_agents(day, DEMO["weight"], **build_default_agents())
+    assert not real.forecast.fallback_used and real.signal_note is None
+    t = ExplainerTools(real)
+    for q in DEMO["questions"]:
+        for f in q.get("key_facts", []):
+            assert _field(t.call(f["tool"], f["args"]), f["field"]) == f["value"], (q["id"], f)

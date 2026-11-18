@@ -1,0 +1,84 @@
+# prompt: explainer_demo_questions | version: 1 | date: 2026-11-18 | issue: #19
+# Demo questions for the Explainer (PRD section 10, "Ask why"). They are TRUE for one real day planned by the
+# real default agents: 2024-07-02 (Tuesday, workday), weight 0.5, tier-0 forecast (no fallback), Risk ok,
+# 0 re-plans, outage 18:00-20:00. Re-check them if the data, models or planner change:
+#   pytest tests/test_explainer.py -k demo_facts   (needs data/processed and models; skipped in CI)
+#   python -m energy_brain.explainer --demo        (live, needs LLM_API_KEY)
+# Each fact names the tool, its arguments, the JSON field and the expected value, so the facts are checked
+# against the tools themselves, not typed by hand into the answer.
+day: "2024-07-02"
+weight: 0.5
+
+questions:
+  - id: generator_7pm
+    question: "Why did you run the generator at 7 PM?"
+    expect: answer
+    key_facts:
+      - {tool: get_slot, args: {time: "19:00"}, field: outage, value: true}
+      - {tool: get_slot, args: {time: "19:00"}, field: grid_import_kw, value: 0.0}
+      - {tool: get_slot, args: {time: "19:00"}, field: load_total_kw, value: 769.8}
+      - {tool: get_slot, args: {time: "19:00"}, field: battery_discharge_kw, value: 500.0}
+      - {tool: get_slot, args: {time: "19:00"}, field: generator_kw, value: 269.8}
+      - {tool: get_assets, args: {}, field: generator.min_kw, value: 240.0}
+    summary: "Grid outage 18:00-20:00; battery at its 500 kW discharge limit; generator covers the remaining 269.8 kW (above its 240 kW minimum)."
+
+  - id: no_charge_2pm
+    question: "Why didn't we charge the battery at 2 PM?"
+    expect: answer
+    key_facts:
+      - {tool: get_slot, args: {time: "14:00"}, field: battery_charge_kw, value: 0.0}
+      - {tool: get_slot, args: {time: "14:00"}, field: battery_soc_end_kwh, value: 950.0}
+      - {tool: get_assets, args: {}, field: battery.soc_max_kwh, value: 950.0}
+      - {tool: get_slot, args: {time: "14:00"}, field: solar_used_kw, value: 37.9}
+      - {tool: get_slot, args: {time: "14:00"}, field: solar_curtailed_kw, value: 0.0}
+    summary: "The battery is already full at its 950 kWh maximum; all 37.9 kW of solar is used by the load."
+
+  - id: when_charge
+    question: "When does the battery charge today, and why then?"
+    expect: answer
+    key_facts:
+      - {tool: find_slots, args: {condition: battery_charging}, field: "blocks[0].from", value: "04:30"}
+      - {tool: find_slots, args: {condition: battery_charging}, field: "blocks[0].to", value: "05:30"}
+      - {tool: find_slots, args: {condition: battery_charging}, field: "blocks[1].from", value: "23:00"}
+      - {tool: get_slot, args: {time: "04:30"}, field: tariff_period, value: off_peak}
+      - {tool: get_slot, args: {time: "23:00"}, field: tariff_period, value: off_peak}
+      - {tool: get_plan_summary, args: {}, field: battery_start_soc_kwh, value: 500.0}
+      - {tool: get_plan_summary, args: {}, field: battery_end_soc_kwh, value: 500.0}
+    summary: "04:30-05:30 and 23:00-24:00, both off-peak (8.49 BDT/kWh); the end-of-day rule needs the battery back at 500 kWh."
+
+  - id: cost_co2
+    question: "What will today cost, and how much CO2?"
+    expect: answer
+    key_facts:
+      - {tool: get_plan_summary, args: {}, field: totals.cost_bdt, value: 152702.7}
+      - {tool: get_plan_summary, args: {}, field: totals.co2_kg, value: 9092.9}
+      - {tool: get_plan_summary, args: {}, field: totals.diesel_l, value: 197.9}
+      - {tool: get_plan_summary, args: {}, field: totals.generator_h, value: 2.0}
+    summary: "152,702.7 BDT and 9,092.9 kg CO2 (197.9 L diesel, 2.0 generator hours)."
+
+  - id: risk
+    question: "Is this plan safe, and what did the Risk agent find?"
+    expect: answer
+    key_facts:
+      - {tool: get_plan_summary, args: {}, field: safe, value: true}
+      - {tool: get_risk_log, args: {}, field: ok, value: true}
+      - {tool: get_risk_log, args: {}, field: replans, value: 0}
+      - {tool: get_risk_log, args: {}, field: stress_scenario, value: "solar_p10,load_p50"}
+      - {tool: get_risk_log, args: {}, field: finding_count, value: 0}
+    summary: "Safe; Risk ok under P10 solar / P50 load; 0 re-plans; no findings."
+
+  - id: refuse_future_forecast
+    question: "What is the solar forecast for 2025-03-01?"
+    expect: {refusal: missing_data}
+
+  - id: refuse_battery_temperature
+    question: "What is the battery temperature right now?"
+    expect: {refusal: missing_data}
+
+  - id: refuse_off_topic
+    question: "Who won the cricket match yesterday?"
+    expect: {refusal: off_topic}
+
+  - id: refuse_change
+    question: "Turn the generator off at 7 PM and re-plan the day."
+    expect: {refusal: change_request}
