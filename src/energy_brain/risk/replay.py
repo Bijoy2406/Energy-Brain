@@ -44,6 +44,10 @@ class StressReplay:
     ``limit[t]``: why slot t is short: ``"energy"`` (battery hit ``soc_min_kwh`` before its power limit, so
     more stored energy would help), ``"power"`` (battery at ``max_discharge_kw``, generator at ``rated_kw``,
     grid unavailable or at its limit: more reserve cannot help), ``""`` when nothing is unserved.
+
+    ``min_battery_kw[t]``: battery discharge that ANY dispatch with the plan's HVAC and EV would need in slot
+    t at this scenario, ``max(0, load + hvac + ev - solar - available grid - generator rated_kw)``. Its sum
+    over a run bounds what a larger reserve can fix (``capacity`` in the Risk reasons).
     """
 
     solar: str
@@ -58,6 +62,7 @@ class StressReplay:
     battery_charge_kw: list[float]
     battery_discharge_kw: list[float]
     soc_kwh: list[float]
+    min_battery_kw: list[float]
     limit: list[str]
     at_risk: list[tuple[str, ...]] = field(default_factory=list)
 
@@ -110,6 +115,7 @@ def stress_replay(
             "battery_charge_kw",
             "battery_discharge_kw",
             "soc_kwh",
+            "min_battery_kw",
             "limit",
             "at_risk",
         )
@@ -238,6 +244,18 @@ def stress_replay(
             ("battery_charge_kw", c),
             ("battery_discharge_kw", d),
             ("soc_kwh", level),
+            (
+                "min_battery_kw",
+                max(
+                    0.0,
+                    dem[t]
+                    + s.hvac_kw[t]
+                    + s.ev_charge_kw[t]
+                    - sun[t]
+                    - (0.0 if outage else grid_max)
+                    - gen_c.rated_kw,
+                ),
+            ),
             ("limit", limit),
             ("at_risk", risk),
         ):

@@ -8,9 +8,12 @@
 2. Gating scenario (default solar P10, load P50, issue #18 / FR-06): ``risk.replay.stress_replay`` runs the
    fixed plan with a reactive operator. Every contiguous block of slots with unserved energy is one
    ``RISK FAIL`` reason (``check=unserved_energy``) and makes ``ok`` False.
-3. Reserve margin: ``plan.reserve_margin_kwh`` + the largest block's energy-limited unserved kWh / eta
-   (stored energy the next plan must hold back), capped at ``soc_max - soc_min``. Power-limited blocks add
-   nothing (``fixable=no``). The margin never decreases, so the orchestrator's re-plan loop is monotone.
+3. Reserve margin: ``plan.reserve_margin_kwh`` + the largest fixable block's unserved kWh / eta (stored
+   energy the next plan must hold back), capped at ``soc_max - soc_min``. A block is fixable only if it is
+   purely ``energy``-limited and the battery energy any dispatch needs over its run fits in
+   ``soc_max - soc_min``. ``power`` (battery and generator at full power) and ``capacity`` (the run needs
+   more than the whole battery window) blocks add nothing (``fixable=no``). The margin never decreases, so the
+   orchestrator's re-plan loop is monotone.
 4. Notes (``RISK NOTE``, never change ``ok``): the advisory replay at ``advisory_load`` (default P90) when it
    leaves energy unserved, and a battery that ends the stressed day below its starting charge.
 
@@ -121,9 +124,9 @@ class P10RiskAgent:
         b = assets.battery
         old = plan.reserve_margin_kwh
         rp = self.replay(plan, forecast, signals, assets)
-        blocks = self._summarise(rp, signals)
+        blocks = self._summarise(rp, signals, assets)
 
-        need = max((blk["energy_kwh"] for blk in blocks), default=0.0) / b.one_way_efficiency
+        need = max((blk["need_kwh"] for blk in blocks if blk["fixable"]), default=0.0)
         cap = max(old, b.soc_max_kwh - b.soc_min_kwh)
         new = min(cap, old + need) if need > TOL else old
         grows = new > old + TOL
@@ -138,7 +141,7 @@ class P10RiskAgent:
                     "limit": blk["limit"],
                     "at_risk": ",".join(blk["at_risk"]),
                     "reserve_kwh": f"{old:g}->{new:g}",
-                    "fixable": "yes" if grows and blk["energy_kwh"] > TOL else "no",
+                    "fixable": "yes" if grows and blk["fixable"] else "no",
                     "detail": blk["detail"]
                     + ("" if new < cap - TOL or not need else "; reserve capped at soc_max - soc_min"),
                 }
@@ -171,7 +174,7 @@ class P10RiskAgent:
 
         if self.advisory_load is not None:
             adv = stress_replay(plan, forecast, signals, assets, self.solar, self.advisory_load)
-            adv_blocks = self._summarise(adv, signals)
+            adv_blocks = self._summarise(adv, signals, assets)
             if adv_blocks:
                 kinds = sorted({k for blk in adv_blocks for k in blk["limit"].split(",")})
                 risk = sorted({r for blk in adv_blocks for r in blk["at_risk"]})
@@ -207,14 +210,32 @@ class P10RiskAgent:
         return RiskReport(ok=ok, reasons=reasons, reserve_margin_kwh=new)
 
     @staticmethod
-    def _summarise(rp: StressReplay, signals: SignalTable) -> list[dict]:
-        """One dict per contiguous block of short slots: kWh, energy-limited kWh, limit, at-risk, detail."""
-        h = slot_hours()
+    def _summarise(rp: StressReplay, signals: SignalTable, assets: AssetConstraints) -> list[dict]:
+        """One dict per contiguous block of short slots (see the module docstring for ``limit``/fixable).
+
+        Energy-limited shortfall in a run whose physical battery need (``StressReplay.min_battery_kw``, any
+        dispatch) exceeds ``soc_max - soc_min`` is ``capacity``: no reserve can fix it.
+        """
+        h, b = slot_hours(), assets.battery
         out = []
         for slots in _blocks(rp.short_slots()):
             kwh = sum(rp.unserved_kw[t] for t in slots) * h
             energy_kwh = sum(rp.unserved_kw[t] for t in slots if rp.limit[t] == "energy") * h
-            limits = sorted({rp.limit[t] for t in slots})
+            # Run of slots before and through the block where any plan must discharge the battery.
+            r0 = slots[0]
+            while r0 > 0 and rp.min_battery_kw[r0 - 1] > TOL:
+                r0 -= 1
+            must_kwh = sum(rp.min_battery_kw[r0 : slots[-1] + 1]) * h / b.one_way_efficiency
+            window = b.soc_max_kwh - b.soc_min_kwh
+            need_kwh = energy_kwh / b.one_way_efficiency
+            capacity = energy_kwh > TOL and must_kwh > window + TOL
+            limits = sorted(
+                {
+                    ("capacity" if capacity else "energy") if rp.limit[t] == "energy" else rp.limit[t]
+                    for t in slots
+                }
+            )
+            fixable = limits == ["energy"]
             at_risk = sorted({r for t in slots for r in rp.at_risk[t]})
             n_out = sum(1 for t in slots if signals.outage[t])
             grid = (
@@ -230,14 +251,24 @@ class P10RiskAgent:
                 "charge cut": sum(rp.charge_cut_kw[t] for t in slots) * h,
             }
             recourse = ", ".join(f"{k} +{v:.1f} kWh" for k, v in used.items() if v > TOL) or "none available"
+            detail = f"{kwh:.1f} kWh unserved, {grid}; operator recourse used: {recourse}"
+            if capacity:
+                detail += (
+                    f"; slots {r0}-{slots[-1]} need at least {must_kwh:.1f} kWh from the battery with the "
+                    f"generator at full power, more than its {window:.1f} kWh window: more reserve cannot "
+                    "fix this"
+                )
+            if "power" in limits:
+                detail += "; battery and generator at full power: more reserve cannot fix this"
             out.append(
                 {
                     "slots": slots,
                     "kwh": kwh,
-                    "energy_kwh": energy_kwh,
+                    "need_kwh": need_kwh,
+                    "fixable": fixable,
                     "limit": ",".join(limits),
                     "at_risk": at_risk,
-                    "detail": f"{kwh:.1f} kWh unserved, {grid}; operator recourse used: {recourse}",
+                    "detail": detail,
                 }
             )
         return out
