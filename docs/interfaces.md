@@ -65,7 +65,17 @@ Every slot must satisfy `p10 ≤ p50 ≤ p90`.
 
 ### `AssetConstraints` (Asset agents, #16)
 
-`start`, plus one block per asset. Shapes only; the mapping from `config/site.yaml` is issue #16.
+`start`, plus one block per asset. Built from `config/site.yaml` by `energy_brain.assets.AssetAgent`
+(one module per asset in `src/energy_brain/assets/`):
+
+- Battery SoC limits: `capacity_kwh × soc_*_pct / 100`. Generator `min_kw = rated_kw × min_load_pct / 100`.
+- HVAC `occupied[t]`: slot t overlaps any `load.shifts` window (a partial overlap counts), except on
+  `load.weekend_days` and Bangladesh public holidays (`data.synthetic_load.is_bangladesh_holiday`), which are
+  unoccupied.
+- EV: fleet totals `vehicles × charger_kw` and `vehicles × battery_kwh × (required − arrival SoC) / 100`.
+  `plugged_in[t]` is true for slots inside `[arrival_time, departure_time)` (wraps midnight). Arrival and
+  departure times must be on slot boundaries, otherwise `ValueError`.
+- Comfort band, EV departure energy and SoC limits are copied from config with no override parameter (hard).
 
 | Block | Fields |
 | --- | --- |
@@ -180,7 +190,9 @@ outage from 13:00 to 14:00 sets slots 52–55 to `true`. Partial-slot outages ro
 
 `energy_brain.stubs` provides `StubForecastAgent`, `StubCloudyForecastAgent`, `StubSignalAgent`,
 `StubAssetProvider` / `stub_assets(start)`, `StubPlanner`, `StubRisk`, `FailOnceRisk`.
-**STUB DATA - PLACEHOLDERS ONLY, NEVER USE IN THE PITCH.**
+**STUB DATA - PLACEHOLDERS ONLY, NEVER USE IN THE PITCH.** The real asset agent (#16) is
+`energy_brain.assets.AssetAgent`, a drop-in replacement for `StubAssetProvider` (same shape; it differs only
+in marking off-days unoccupied).
 
 ```python
 from datetime import datetime
