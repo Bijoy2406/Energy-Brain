@@ -2,7 +2,8 @@
 
 Every number in an Explainer answer must appear in a tool output of the same conversation.
 
-**Extracted from the answer:** plain numbers (``1,234.5``), numbers with a unit (``500 kW``, ``4.7 %``,
+**Extracted from the answer:** plain numbers (``1,234.5``; a thin or no-break space also groups thousands),
+numbers with a unit (``500 kW``, ``4.7 %``,
 ``BDT 152,703``), clock times (``19:00``, ``7 PM``, ``7:30 p.m.``) and dates (``2024-07-02``,
 ``2 July 2024``).
 Not extracted: digits inside identifiers (``P10``, ``P90``, ``CO2``), markdown list markers (``1.`` at the
@@ -88,7 +89,8 @@ _TOKEN_RE = re.compile(
     rf"|(?P<mdy>\b{_MON.replace('mon', 'mon2')}\s+(?P<d2>\d{{1,2}}){_DAY}\b(?:,?\s+(?P<y2>\d{{4}}))?)"
     r"|(?P<clock>\b(?P<hh>[01]?\d|2[0-4]):(?P<mm>[0-5]\d)(?:\s*(?P<ap1>[ap])\.?\s*m\b\.?)?)"
     r"|(?P<ampm>\b(?P<h12>1[0-2]|0?[1-9])\s*(?P<ap2>[ap])\.?\s*m\b\.?)"
-    r"|(?P<num>(?<![A-Za-z_\d.,])(?P<int>\d{1,3}(?:,\d{3})+|\d+)(?:\.(?P<frac>\d+))?(?![\d]))",
+    r"|(?P<num>(?<![A-Za-z_\d.,])(?P<int>\d{1,3}(?:,\d{3})+|\d{1,3}(?:[   ]\d{3})+|\d+)"
+    r"(?:\.(?P<frac>\d+))?(?![\d]))",
     re.IGNORECASE,
 )
 _PREFIX_BDT = re.compile(r"(?:BDT|Tk|৳)\s*$", re.IGNORECASE)
@@ -172,7 +174,8 @@ def extract_tokens(text: str) -> list[Token]:
             out.append(Token(m.group(0), "time", _time(int(g["h12"]), 0, g["ap2"])))
         else:
             frac = g["frac"] or ""
-            value = float(g["int"].replace(",", "") + ("." + frac if frac else ""))
+            digits = re.sub(r"[,\u202f\u2009\u00a0]", "", g["int"])
+            value = float(digits + ("." + frac if frac else ""))
             um = _UNIT_RE.match(_UNIT_GAP.sub("", text[m.end() :], count=1))
             unit = _unit_of(um.group(0)) if um else None
             label = f"{m.group(0)} {um.group(0).strip()}" if um else m.group(0)

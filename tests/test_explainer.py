@@ -361,6 +361,10 @@ def test_extract_skips_identifiers_and_list_markers():
     # models often put a narrow no-break space between number and unit
     assert [t.unit for t in extract_tokens("733\u202fkWh, 806\u00a0kWh, 5\u2009kW")] == ["kwh", "kwh", "kw"]
     assert not verify_answer("The generator made 732.9\u202fkW.", CALLS).ok
+    # thin / narrow no-break spaces group thousands (gpt-oss writes "152 703 BDT")
+    assert extract_tokens("152\u202f703\u202fBDT")[0].value == 152703.0
+    assert verify_answer("It costs 152\u202f703\u202fBDT.", CALLS).ok
+    assert not verify_answer("It costs 153\u202f000\u202fBDT.", CALLS).ok
     assert extract_tokens("7:30 p.m.")[0].value == "19:30" and extract_tokens("12 AM")[0].value == "00:00"
 
 
