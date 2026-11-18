@@ -374,8 +374,102 @@ operator recourse used: generator +45.5 kWh` (stub cloudy day; the generator is 
 battery hits `soc_min_kwh` in the last outage slot). Reserve values use Python's `:g` format.
 
 **Measured so far** (placeholders, not pitch numbers): the test day set (`tests/test_risk_agent.py`, stub days
-plus two `data/sample` days in 2024-06) is 7/7 feasible at solar P10 / load P50 after re-plan; the real
-backtest share is #20's job.
+plus two `data/sample` days in 2024-06) is 7/7 feasible at solar P10 / load P50 after re-plan. In the #20
+backtest (all 366 days of 2024, tier-0 forecasts) every plan passed Risk at w = 0.5, 1 and 0 without a re-plan.
+
+### Evaluator (#20, `energy_brain.evaluator`)
+
+Backtest of the optimiser against two rule-based baselines on past days. **Every headline number in the pitch
+comes from `reports/backtest.json`**, with the weight and the baseline named. Rerun with one command:
+
+```
+python -m energy_brain.evaluator [--start 2024-01-01] [--end 2024-12-31] [--days N] [--weight 0.5 --weight 1 --weight 0] [--out reports]
+```
+
+Defaults: every day of 2024 (the out-of-sample test year in `reports/forecast_metrics.json`; models trained on
+2022–2023), weights 0.5 (headline), 1 and 0. `--days N` picks N evenly spaced days; `--weight` repeats, the first
+is the headline. Days outside the test year are refused unless `--allow-in-sample` (then flagged). Needs
+`data/processed/{pv,load,weather}.parquet` and the six `models/*.txt`; refuses to run without them (no pitch
+number from fallback forecasts or sample data). About 0.25 s per day for three weights (366 days: about 90 s).
+Deterministic: reruns give identical numbers; only the `run` timings differ. Stub agents are refused.
+
+**Per day.** The real Forecast, Signal and Asset agents run once and every method sees their outputs:
+
+1. Optimiser: `orchestrator.run_plan` with `MilpPlanner` and `P10RiskAgent` (re-plans included), once per weight,
+   on the P50 forecast.
+2. Baselines (`evaluator.baselines`) built on the day's **actual** solar and base load (real-time rules need no
+   forecast; giving them perfect information is the conservative choice). Each must pass
+   `planner.find_violations` against the actuals; a violation excludes the day and is listed, the check is never
+   relaxed.
+3. Settlement (`evaluator.settle.settle`) of every schedule against the actuals with the same function.
+
+**Baselines** (PRD section 2). Both use the same assets, signals, outages and hard constraints as the optimiser
+(`planner.rules`), and keep the end-of-day rule (end SoC ≥ start SoC).
+
+| Rule | B1 `baseline_solar_first` ("charge on arrival / solar-first") | B2 `baseline_time_of_use` ("simple time-of-use") |
+| --- | --- | --- |
+| HVAC | occupied minimum | same |
+| EV | full charger power from the first required slot (00:00) until the energy is met | off-peak required slots first, then the other required slots |
+| Solar | serves load first; surplus charges the battery; the rest is curtailed (no export) | same |
+| Battery charge | surplus solar only | surplus solar, plus grid in off-peak slots: up to `soc_max` before the first peak slot, up to the starting SoC after the last |
+| Battery discharge | covers any load solar leaves, down to the outage backup | peak slots only, down to the outage backup |
+| Outage backup | battery keeps (and grid-charges to) what later outage slots need beyond the generator rating (`outage_backup_kwh`, ramped at the charge rate each slot allows) | same |
+| Outage | battery above the backup, then the generator (≥ `min_kw`; surplus backs off discharge, charges the battery, then backs off solar); above its rating, the backup energy | same |
+| Grid | the rest, up to `max_import_kw`; above it battery, then generator | same |
+| End of day | SoC below the start: grid top-up in the latest non-outage slots, then replace the latest discharge with grid | same |
+
+Peak / off-peak are read from the tariff signal: off-peak = slots at the day's lowest tariff, peak = at its
+highest. The outage backup exists because a rule that drains the battery before a midday outage cannot carry
+load above the generator's 800 kW (it broke the energy balance on stub and real days); the outage calendar is a
+day-ahead signal the optimiser also sees.
+
+**EV and the day window (conservative).** The vans park 18:00–07:00, so today's required energy is due before
+07:00 (`rules.ev_required_slots`). Both baselines therefore charge from 00:00 (off-peak); a literal "charge on
+arrival" at 18:00 would pay the peak tariff. This **understates the savings by about 144 kWh × 3.29 BDT
+(≈ 474 BDT) per day**.
+
+**Settlement.** `settle(schedule, actual, signals, assets)` runs `risk.stress_replay` with an "actual"
+`Forecast` (P10 = P50 = P90 = measured, `settle.actual_forecast`) and `solar="p50", load="p50"`: the Risk
+agent's reactive operator (curtailed solar, cut charging, extra grid never in an outage, extra battery down to
+`soc_min`, generator; HVAC and EV never cut), not a second recourse model. The settled `Schedule` balances in
+every slot: unserved energy (`unserved_kw`) is taken off base load, then EV, then HVAC, and reported; energy the
+replay had to dump (generator minimum load, planned discharge no longer needed) is added to `base_load_kw` and
+reported as `dumped_kw`; `solar_used_kw` closes the balance. Totals come from `compute_totals` only. A schedule
+that does not balance (an unsafe plan's diagnostic schedule) is not settled; its day is excluded from totals and
+listed with the reason. Known bias: when actual solar beats the plan with no gap to close, the replay curtails
+the extra instead of replacing grid import (it was built for shortfalls). This only penalises the optimiser
+(2024: about 6,300 kWh, 59,000 BDT, 0.14 % of cost).
+
+**Adjusted figures (headline).** `adjusted_cost_bdt` / `adjusted_co2_kg` add the refill of any end-of-day battery
+shortfall (`initial − soc[-1]`, if positive) from the grid at the day's lowest tariff and that slot's grid CO2,
+divided by the one-way efficiency. A surplus is not credited. Raw `cost_bdt` / `co2_kg` are kept.
+
+**Forecast quality** per day: P50 MAE (kW) for solar and load, and P10–P90 coverage, defined as in
+`reports/forecast_metrics.json` (share of slots with `p10 ≤ actual ≤ p90`, all slots), plus solar daylight
+coverage (slots with actual > 0 or P90 > 0). **Label everywhere: measured with observed weather as forecast
+input (tier-0), NOT a true day-ahead weather forecast, so real-world error would be larger.**
+
+**`reports/backtest.json`** (`schema_version` 1, floats rounded to 4 decimals):
+
+| Key | Content |
+| --- | --- |
+| `caveats` | out-of-sample 2024, synthetic load, simulated PV, synthetic outages, the forecast label, baselines on actuals, EV understatement, adjusted figures, HVAC, settlement bias, flat grid CO2 |
+| `headline.lines` | pitch sentences at the headline weight, every baseline named, the other weights beside it |
+| `summary.days` | requested / included / excluded (with `excluded_dates` + reason), outage days, workdays |
+| `summary.by_weight["<w>"]` | `totals` per method (sums of the row fields), `vs[<baseline>]` (cost/CO2 saved % adjusted and raw, BDT / kg saved, generator hours and diesel saved, `days_cost_worse`, `days_co2_worse`, per-day min/median/max %, splits `outage_days` / `no_outage_days` / `workdays` / `off_days`), `plan_health` (not optimal, unsafe, Risk not ok, re-planned, fallback, with dates) |
+| `summary.forecast` | pooled MAE and coverage, tier-0 days, fallback dates, the label and the coverage definition |
+| `config` | first/last day, weights, out-of-sample flag, test/train years, sha256 of the data files, models and `config/*.yaml`, git commit + dirty flag, package versions, provenance (Signal agent `provenance()` line plus load, PV, weather, outages, tariff, grid CO2, forecast) |
+| `run` | wall-clock runtime (not deterministic) |
+| `days[]` | per day: date, weekday, workday, outage slots, forecast fallback and note, signal note, forecast quality, `included` / `excluded_reason`, `methods[]` (one row per method) |
+
+**`reports/backtest.csv`**: `#` comment lines with the caveats, then one row per day and per method
+(`pandas.read_csv(path, comment="#")`). Columns: `date, method, weight` (blank for baselines), `status, plan_safe,
+risk_ok, replans, reserve_margin_kwh, fallback_used, violations, settled`, settled `cost_bdt, co2_kg`,
+`adjusted_cost_bdt, adjusted_co2_kg`, `planned_cost_bdt, planned_co2_kg` (the plan's own totals; for baselines =
+settled), `grid_kwh, solar_kwh, generator_kwh, generator_hours, diesel_litres, unserved_kwh, dumped_kwh,
+end_soc_delta_kwh, end_soc_shortfall_kwh`, `recourse_{grid,battery,generator,charge_cut}_kwh`,
+`cost_saved_vs_<baseline>_pct`, `co2_saved_vs_<baseline>_pct` (`(baseline − method) / baseline × 100` on the
+adjusted figures), then `workday, outage_slots, included` and the day's forecast fields.
 
 ## 5. Orchestrator
 
