@@ -471,6 +471,90 @@ end_soc_delta_kwh, end_soc_shortfall_kwh`, `recourse_{grid,battery,generator,cha
 `cost_saved_vs_<baseline>_pct`, `co2_saved_vs_<baseline>_pct` (`(baseline − method) / baseline × 100` on the
 adjusted figures), then `workday, outage_slots, included` and the day's forecast fields.
 
+### Explainer (#19, `energy_brain.explainer`)
+
+LLM that answers operator questions about one plan **using only tool outputs**. It never decides anything: it
+can call only the read-only tools below and a `refuse` pseudo-tool; the code executes nothing else.
+
+```python
+from energy_brain.defaults import build_default_agents
+from energy_brain.explainer import ExplainerAgent, PlanContext, load_backtest
+
+ctx = PlanContext.from_agents(start, 0.5, backtest=load_backtest(), **build_default_agents())
+answer = ExplainerAgent().ask("Why did you run the generator at 7 PM?", ctx)   # -> ExplainerAnswer
+```
+
+`python -m energy_brain.explainer --demo` asks the demo questions live (paced, `--pause` seconds apart).
+
+**Context.** `PlanContext(plan, forecast, signals, assets, signal_note, backtest, risk_scenario)`.
+`from_agents` runs the Forecast, Signal and Asset agents once and passes their outputs to `run_plan` through
+fixed wrappers (no orchestrator change), keeps the Signal agent's `run_with_note` note (the known gap above) and
+the Risk agent's gating scenario. `load_backtest()` reads `reports/backtest.json` when called (None if absent).
+
+**LLM.** Groq through its OpenAI-compatible API (`openai` package, `base_url=https://api.groq.com/openai/v1`).
+`GroqClient` reads `LLM_PROVIDER` (only `groq`), `LLM_MODEL` (default `openai/gpt-oss-120b`) and `LLM_API_KEY`
+from the environment, else the git-ignored `.env`, **at call time** (never at import). Temperature 0,
+`max_tokens` 1024, `reasoning_effort=low` for gpt-oss, SDK retries off. `FakeLLMClient` replays a script
+(tests; CI needs no key and no network). Reasoning fields are dropped; the key is never logged or returned.
+
+**Tools** (`explainer.tools`, OpenAI function-calling declarations in `TOOL_DECLARATIONS`). All read-only,
+JSON results, rounded to 1 decimal (hours 2). Every slot or block has local `time`/`end` or `from`/`to` as
+`HH:MM` (day end `24:00`); slot numbers in planner notes are rewritten as times. Units are in the keys
+(`_kw`, `_kwh`, `_bdt`, `_kg`, `_l`, `_pct`, `_h`, `_bdt_per_kwh` ...). **Sums, energies, differences and means
+are computed by the tools**, never by the LLM. Arguments are validated against the declarations.
+
+| Tool | Arguments | Returns |
+| --- | --- | --- |
+| `get_plan_summary` | – | date, weight + meaning, status, `safe` (`planner.is_safe`), Risk ok, re-plans, reserve, forecast/signal fallback flags, day totals, battery start/end SoC, notes |
+| `get_slot` | `time` | every flow (kW), `load_total_kw`, SoC start/end, tariff + `tariff_period` (`off_peak`/`flat`/`peak` = the day's lowest/other/highest tariff), outage, slot cost, solar/load P10/P50/P90, **`binding`** flags |
+| `get_slot_range` | `start`, `end` (exclusive) | energy per flow (kWh), cost, CO2, SoC start/end/min/max, outage blocks, rows (15-min up to 3 h, else hourly means) |
+| `find_slots` | `condition` | blocks with duration, energy, mean and max kW, and totals. Conditions: `generator_on`, `battery_charging`, `battery_discharging`, `grid_import`, `solar_curtailed`, `ev_charging`, `outage`, `peak_tariff`, `off_peak_tariff`, `flat_tariff` |
+| `get_forecast` | `start`, `end` | solar and base-load P10/P50/P90 rows, P50 energy, fallback flag |
+| `get_signals` | – | tariff blocks, outage blocks, grid CO2, diesel price and CO2 |
+| `get_assets` | – | battery, generator, grid, HVAC (occupied blocks), EV fleet (plug-in blocks, energy due by) |
+| `get_risk_log` | – | ok, re-plans, reserve, stress scenario, each finding parsed (`risk.parse_reason`) with slot ranges as times |
+| `get_forecast_note` | – | forecast and signal fallback flags and parsed notes |
+| `get_backtest_totals` | – | year totals vs each named baseline at the plan's weight, and this date's settled row; `{"available": false, "reason": "date ... not in backtest"}` otherwise |
+
+`binding` flags (computed in code, the only basis for a "why"): `outage_grid_unavailable`,
+`grid_at_import_limit`, `battery_full`, `battery_at_min_soc` (SoC floor incl. reserve), `battery_charge_at_max`,
+`battery_discharge_at_max`, `generator_at_rated`, `generator_at_min_load`, `hvac_off_unoccupied`,
+`hvac_at_occupied_minimum`, `ev_not_plugged_in`, `ev_charge_at_max`, `solar_curtailed`, each with its limit.
+
+**Answer format** (`ExplainerAnswer`, JSON): `question`, `language`, `answer` (banners first, then the text),
+`verified` (true only when every number was traced), `refusal_reason` (`missing_data` / `off_topic` /
+`change_request` / `unverified` / `language` / null), `error` (`no_key`, `bad_config`, `network`, `timeout`,
+`rate_limit`, `blocked_model`, `bad_tool_call`, `max_rounds`, `api_error` / null), `banners`, `tool_calls`
+(name, arguments, result), `provenance` (per number: text, kind, tool, JSON field, call index),
+`unverified_numbers`, `rounds`, `model`, `prompt_version`. The answer text has no inline citations; the
+dashboard shows `provenance`.
+
+**Verification rule** (`explainer.verify`, PRD: 0 untraceable numbers). Every number, time and date in the
+answer must appear in a tool output of the same conversation. Extracted: numbers (with thousands separators),
+numbers with a unit, `19:00` / `7 PM` / `7:30 p.m.`, ISO and written dates. Not extracted: digits inside
+identifiers (`P10`, `CO2`), markdown list markers, numbers written as words. A number with `d` shown decimals
+matches a tool value within `0.5·10^-d` (correct rounding to the shown precision only; the sign is wording). If
+the answer gives a unit it must equal the tool field's unit (from its key), so kW vs kWh and any conversion
+(MWh, tonnes) fail. `00:00` = `24:00`. Numbers that appear only in the question never count. On failure the
+model gets the unverified numbers and **one** retry; a second failure returns a refusal naming them.
+Scope: the check proves a number was returned by a tool, not that upstream free text (a note) is true.
+
+**Refusal and safety rules.** In code, not left to the model: an unsafe plan gets the `NOT SAFE TO EXECUTE`
+banner first; a forecast fallback and a signal fallback each get a banner (banners contain no numbers). A final
+answer without any data tool call gets one nudge, then "I don't have that". The model calls `refuse` for
+missing data ("I don't have that." plus what is missing, which may echo the question but nothing invented),
+off-topic questions and requests to change, re-plan or control anything. The question and tool results are
+wrapped and declared data; unknown tools are rejected, never executed. English only (`language="en"`; Bangla
+is #24).
+
+**Limits.** At most 6 model calls per question, 30 s per request, 60 s overall; a 429 is retried once after
+`retry-after` (≤ 20 s), then a clear message; malformed tool-call JSON (or Groq `tool_use_failed`) is retried
+once. Nothing raises into the API.
+
+**Prompts** (`prompts/`, each with a `<!-- prompt | version | date -->` header, loaded at ask time):
+`explainer_system.md`, `explainer_retry.md`, `explainer_ground.md`; demo questions with tool-checked key facts
+in `explainer_demo_questions.yaml` (real day 2024-07-02, w = 0.5).
+
 ## 5. Orchestrator
 
 `run_plan(start, weight, *, forecast_agent, signal_agent, assets, planner, risk, max_replans=3)`:
