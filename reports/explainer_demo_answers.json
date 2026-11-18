@@ -1,0 +1,511 @@
+{
+ "schema_version": 1,
+ "note": "Verified Explainer answers recorded live for the demo questions (#21). Served only when the question matches exactly and the facts still match the current plan (see energy_brain.api.demo_answers).",
+ "recorded_at": "2026-11-18T16:32:20+06:00",
+ "model": "openai/gpt-oss-120b",
+ "day": "2024-07-02",
+ "weight": 0.5,
+ "answers": [
+  {
+   "id": "generator_7pm",
+   "question": "Why did you run the generator at 7 PM?",
+   "body": "The optimiser ran the generator at 19:00 because the grid was unavailable (outage flag) and the battery was already discharging at its maximum 500 kW. With the grid down and the battery unable to supply more power, the generator was needed to meet the remaining load (including the occupied HVAC minimum of 100 kW). The data shows these binding conditions, which directly explain the generator’s operation.",
+   "answer": {
+    "question": "Why did you run the generator at 7 PM?",
+    "language": "en",
+    "answer": "The optimiser ran the generator at 19:00 because the grid was unavailable (outage flag) and the battery was already discharging at its maximum 500 kW. With the grid down and the battery unable to supply more power, the generator was needed to meet the remaining load (including the occupied HVAC minimum of 100 kW). The data shows these binding conditions, which directly explain the generator’s operation.",
+    "verified": true,
+    "refusal_reason": null,
+    "error": null,
+    "banners": [],
+    "tool_calls": [
+     {
+      "name": "get_slot",
+      "arguments": {
+       "time": "19:00"
+      },
+      "result": {
+       "time": "19:00",
+       "end": "19:15",
+       "grid_import_kw": 0.0,
+       "solar_used_kw": 0.0,
+       "solar_curtailed_kw": 0.0,
+       "battery_charge_kw": 0.0,
+       "battery_discharge_kw": 500.0,
+       "generator_kw": 269.8,
+       "base_load_kw": 669.8,
+       "hvac_kw": 100.0,
+       "ev_charge_kw": 0.0,
+       "load_total_kw": 769.8,
+       "battery_soc_start_kwh": 627.0,
+       "battery_soc_end_kwh": 495.3,
+       "tariff_bdt_per_kwh": 11.78,
+       "tariff_period": "peak",
+       "outage": true,
+       "slot_cost_bdt": 1948.3,
+       "solar_forecast_kw": {
+        "p10": 0.0,
+        "p50": 0.0,
+        "p90": 0.0
+       },
+       "load_forecast_kw": {
+        "p10": 666.7,
+        "p50": 669.8,
+        "p90": 673.8
+       },
+       "binding": [
+        {
+         "flag": "outage_grid_unavailable",
+         "grid_import_kw": 0.0
+        },
+        {
+         "flag": "battery_discharge_at_max",
+         "max_discharge_kw": 500.0
+        },
+        {
+         "flag": "hvac_at_occupied_minimum",
+         "min_kw_when_occupied": 100.0
+        }
+       ]
+      }
+     }
+    ],
+    "provenance": [
+     {
+      "text": "19:00",
+      "kind": "time",
+      "tool": "get_slot",
+      "field": "time",
+      "call": 0
+     },
+     {
+      "text": "500 kW",
+      "kind": "number",
+      "tool": "get_slot",
+      "field": "battery_discharge_kw",
+      "call": 0
+     },
+     {
+      "text": "100 kW",
+      "kind": "number",
+      "tool": "get_slot",
+      "field": "hvac_kw",
+      "call": 0
+     }
+    ],
+    "unverified_numbers": [],
+    "rounds": 2,
+    "model": "openai/gpt-oss-120b",
+    "prompt_version": "explainer_system v3 (2026-11-18)"
+   }
+  },
+  {
+   "id": "no_charge_2pm",
+   "question": "Why didn't we charge the battery at 2 PM?",
+   "body": "The optimiser did not charge the battery at 14:00 because the battery was already full (maximum 950 kWh). The slot data shows a “battery_full” flag, indicating the state‑of‑charge limit was reached, so no charging power was scheduled.",
+   "answer": {
+    "question": "Why didn't we charge the battery at 2 PM?",
+    "language": "en",
+    "answer": "The optimiser did not charge the battery at 14:00 because the battery was already full (maximum 950 kWh). The slot data shows a “battery_full” flag, indicating the state‑of‑charge limit was reached, so no charging power was scheduled.",
+    "verified": true,
+    "refusal_reason": null,
+    "error": null,
+    "banners": [],
+    "tool_calls": [
+     {
+      "name": "get_slot",
+      "arguments": {
+       "time": "14:00"
+      },
+      "result": {
+       "time": "14:00",
+       "end": "14:15",
+       "grid_import_kw": 1012.9,
+       "solar_used_kw": 37.9,
+       "solar_curtailed_kw": 0.0,
+       "battery_charge_kw": 0.0,
+       "battery_discharge_kw": 0.0,
+       "generator_kw": 0.0,
+       "base_load_kw": 950.8,
+       "hvac_kw": 100.0,
+       "ev_charge_kw": 0.0,
+       "load_total_kw": 1050.8,
+       "battery_soc_start_kwh": 950.0,
+       "battery_soc_end_kwh": 950.0,
+       "tariff_bdt_per_kwh": 9.43,
+       "tariff_period": "flat",
+       "outage": false,
+       "slot_cost_bdt": 2387.9,
+       "solar_forecast_kw": {
+        "p10": 37.9,
+        "p50": 37.9,
+        "p90": 38.8
+       },
+       "load_forecast_kw": {
+        "p10": 939.0,
+        "p50": 950.8,
+        "p90": 955.2
+       },
+       "binding": [
+        {
+         "flag": "battery_full",
+         "soc_max_kwh": 950.0
+        },
+        {
+         "flag": "hvac_at_occupied_minimum",
+         "min_kw_when_occupied": 100.0
+        },
+        {
+         "flag": "ev_not_plugged_in"
+        }
+       ]
+      }
+     }
+    ],
+    "provenance": [
+     {
+      "text": "14:00",
+      "kind": "time",
+      "tool": "get_slot",
+      "field": "time",
+      "call": 0
+     },
+     {
+      "text": "950 kWh",
+      "kind": "number",
+      "tool": "get_slot",
+      "field": "battery_soc_start_kwh",
+      "call": 0
+     }
+    ],
+    "unverified_numbers": [],
+    "rounds": 2,
+    "model": "openai/gpt-oss-120b",
+    "prompt_version": "explainer_system v3 (2026-11-18)"
+   }
+  },
+  {
+   "id": "when_charge",
+   "question": "When does the battery charge today, and why then?",
+   "body": "The battery charges in two blocks:\n\n- **04:30 – 05:30** (off‑peak tariff 8.49 BDT/kWh) – the optimiser uses the cheap off‑peak price to add energy while staying within the battery’s 500 kW limit.  \n- **23:00 – 24:00** (off‑peak tariff 8.49 BDT/kWh) – this late‑night off‑peak window also lets the battery finish the day at the required end‑of‑day state of charge (500 kWh), matching the plan rule that the battery must end the day at or above its starting charge.  \n\nThese periods are the only times the optimiser found both a low tariff and the need to meet the end‑of‑day SOC requirement.",
+   "answer": {
+    "question": "When does the battery charge today, and why then?",
+    "language": "en",
+    "answer": "The battery charges in two blocks:\n\n- **04:30 – 05:30** (off‑peak tariff 8.49 BDT/kWh) – the optimiser uses the cheap off‑peak price to add energy while staying within the battery’s 500 kW limit.  \n- **23:00 – 24:00** (off‑peak tariff 8.49 BDT/kWh) – this late‑night off‑peak window also lets the battery finish the day at the required end‑of‑day state of charge (500 kWh), matching the plan rule that the battery must end the day at or above its starting charge.  \n\nThese periods are the only times the optimiser found both a low tariff and the need to meet the end‑of‑day SOC requirement.",
+    "verified": true,
+    "refusal_reason": null,
+    "error": null,
+    "banners": [],
+    "tool_calls": [
+     {
+      "name": "get_plan_summary",
+      "arguments": {},
+      "result": {
+       "date": "2024-07-02",
+       "day_window": {
+        "from": "00:00",
+        "to": "24:00"
+       },
+       "slot_length_min": 15,
+       "weight": 0.5,
+       "weight_meaning": "objective w*cost + (1-w)*CO2; 1 = cheapest, 0 = cleanest",
+       "status": "optimal",
+       "safe": true,
+       "risk_ok": true,
+       "replans": 0,
+       "reserve_margin_kwh": 0.0,
+       "forecast_fallback": false,
+       "signal_fallback": false,
+       "totals": {
+        "cost_bdt": 152702.7,
+        "co2_kg": 9092.9,
+        "grid_kwh": 13810.5,
+        "solar_used_kwh": 567.3,
+        "generator_kwh": 732.9,
+        "generator_h": 2.0,
+        "diesel_l": 197.9
+       },
+       "battery_start_soc_kwh": 500.0,
+       "battery_end_soc_kwh": 500.0,
+       "notes": [
+        "Plan uses P50 solar and P50 base load; battery must end the day at or above its starting charge (500.0 kWh).",
+        "EV 18:00-24:00 are an evening plug-in window for the next departure: charging there is optional; the departure energy is required only before 07:00-07:15.",
+        "HVAC comfort is modelled as the occupied minimum power (no thermal model), so pre-cooling is not used."
+       ]
+      }
+     },
+     {
+      "name": "find_slots",
+      "arguments": {
+       "condition": "battery_charging"
+      },
+      "result": {
+       "condition": "battery_charging",
+       "block_count": 2,
+       "total_h": 2.0,
+       "blocks": [
+        {
+         "from": "04:30",
+         "to": "05:30",
+         "duration_h": 1.0,
+         "energy_kwh": 474.3,
+         "avg_kw": 474.3,
+         "max_kw": 500.0
+        },
+        {
+         "from": "23:00",
+         "to": "24:00",
+         "duration_h": 1.0,
+         "energy_kwh": 421.6,
+         "avg_kw": 421.6,
+         "max_kw": 500.0
+        }
+       ],
+       "total_energy_kwh": 896.0
+      }
+     },
+     {
+      "name": "get_signals",
+      "arguments": {},
+      "result": {
+       "tariff_blocks": [
+        {
+         "from": "00:00",
+         "to": "06:00",
+         "duration_h": 6.0,
+         "tariff_period": "off_peak",
+         "tariff_bdt_per_kwh": 8.49
+        },
+        {
+         "from": "06:00",
+         "to": "17:00",
+         "duration_h": 11.0,
+         "tariff_period": "flat",
+         "tariff_bdt_per_kwh": 9.43
+        },
+        {
+         "from": "17:00",
+         "to": "23:00",
+         "duration_h": 6.0,
+         "tariff_period": "peak",
+         "tariff_bdt_per_kwh": 11.78
+        },
+        {
+         "from": "23:00",
+         "to": "24:00",
+         "duration_h": 1.0,
+         "tariff_period": "off_peak",
+         "tariff_bdt_per_kwh": 8.49
+        }
+       ],
+       "outage_blocks": [
+        {
+         "from": "18:00",
+         "to": "20:00",
+         "duration_h": 2.0
+        }
+       ],
+       "grid_co2_kg_per_kwh": 0.62,
+       "diesel_price_bdt_per_l": 107.0,
+       "diesel_co2_kg_per_l": 2.68,
+       "signal_fallback": false
+      }
+     }
+    ],
+    "provenance": [
+     {
+      "text": "04:30",
+      "kind": "time",
+      "tool": "find_slots",
+      "field": "blocks[0].from",
+      "call": 1
+     },
+     {
+      "text": "05:30",
+      "kind": "time",
+      "tool": "find_slots",
+      "field": "blocks[0].to",
+      "call": 1
+     },
+     {
+      "text": "8.49 BDT/kWh",
+      "kind": "number",
+      "tool": "get_signals",
+      "field": "tariff_blocks[0].tariff_bdt_per_kwh",
+      "call": 2
+     },
+     {
+      "text": "500 kW",
+      "kind": "number",
+      "tool": "find_slots",
+      "field": "blocks[0].max_kw",
+      "call": 1
+     },
+     {
+      "text": "23:00",
+      "kind": "time",
+      "tool": "find_slots",
+      "field": "blocks[1].from",
+      "call": 1
+     },
+     {
+      "text": "24:00",
+      "kind": "time",
+      "tool": "get_plan_summary",
+      "field": "day_window.from",
+      "call": 0
+     },
+     {
+      "text": "8.49 BDT/kWh",
+      "kind": "number",
+      "tool": "get_signals",
+      "field": "tariff_blocks[0].tariff_bdt_per_kwh",
+      "call": 2
+     },
+     {
+      "text": "500 kWh",
+      "kind": "number",
+      "tool": "get_plan_summary",
+      "field": "battery_start_soc_kwh",
+      "call": 0
+     }
+    ],
+    "unverified_numbers": [],
+    "rounds": 4,
+    "model": "openai/gpt-oss-120b",
+    "prompt_version": "explainer_system v3 (2026-11-18)"
+   }
+  },
+  {
+   "id": "cost_co2",
+   "question": "What will today cost, and how much CO2?",
+   "body": "The plan’s total cost is 152 703 BDT and it will emit 9 093 kg CO₂. The plan is safe to run.",
+   "answer": {
+    "question": "What will today cost, and how much CO2?",
+    "language": "en",
+    "answer": "The plan’s total cost is 152 703 BDT and it will emit 9 093 kg CO₂. The plan is safe to run.",
+    "verified": true,
+    "refusal_reason": null,
+    "error": null,
+    "banners": [],
+    "tool_calls": [
+     {
+      "name": "get_plan_summary",
+      "arguments": {},
+      "result": {
+       "date": "2024-07-02",
+       "day_window": {
+        "from": "00:00",
+        "to": "24:00"
+       },
+       "slot_length_min": 15,
+       "weight": 0.5,
+       "weight_meaning": "objective w*cost + (1-w)*CO2; 1 = cheapest, 0 = cleanest",
+       "status": "optimal",
+       "safe": true,
+       "risk_ok": true,
+       "replans": 0,
+       "reserve_margin_kwh": 0.0,
+       "forecast_fallback": false,
+       "signal_fallback": false,
+       "totals": {
+        "cost_bdt": 152702.7,
+        "co2_kg": 9092.9,
+        "grid_kwh": 13810.5,
+        "solar_used_kwh": 567.3,
+        "generator_kwh": 732.9,
+        "generator_h": 2.0,
+        "diesel_l": 197.9
+       },
+       "battery_start_soc_kwh": 500.0,
+       "battery_end_soc_kwh": 500.0,
+       "notes": [
+        "Plan uses P50 solar and P50 base load; battery must end the day at or above its starting charge (500.0 kWh).",
+        "EV 18:00-24:00 are an evening plug-in window for the next departure: charging there is optional; the departure energy is required only before 07:00-07:15.",
+        "HVAC comfort is modelled as the occupied minimum power (no thermal model), so pre-cooling is not used."
+       ]
+      }
+     }
+    ],
+    "provenance": [
+     {
+      "text": "152 703 BDT",
+      "kind": "number",
+      "tool": "get_plan_summary",
+      "field": "totals.cost_bdt",
+      "call": 0
+     },
+     {
+      "text": "9 093 kg",
+      "kind": "number",
+      "tool": "get_plan_summary",
+      "field": "totals.co2_kg",
+      "call": 0
+     }
+    ],
+    "unverified_numbers": [],
+    "rounds": 2,
+    "model": "openai/gpt-oss-120b",
+    "prompt_version": "explainer_system v3 (2026-11-18)"
+   }
+  },
+  {
+   "id": "risk",
+   "question": "Is this plan safe, and what did the Risk agent find?",
+   "body": "The plan is safe to execute. The Risk agent reported everything OK – the risk check passed, no replans were required and the reserve margin is zero. No additional risk findings were noted.",
+   "answer": {
+    "question": "Is this plan safe, and what did the Risk agent find?",
+    "language": "en",
+    "answer": "The plan is safe to execute. The Risk agent reported everything OK – the risk check passed, no replans were required and the reserve margin is zero. No additional risk findings were noted.",
+    "verified": true,
+    "refusal_reason": null,
+    "error": null,
+    "banners": [],
+    "tool_calls": [
+     {
+      "name": "get_plan_summary",
+      "arguments": {},
+      "result": {
+       "date": "2024-07-02",
+       "day_window": {
+        "from": "00:00",
+        "to": "24:00"
+       },
+       "slot_length_min": 15,
+       "weight": 0.5,
+       "weight_meaning": "objective w*cost + (1-w)*CO2; 1 = cheapest, 0 = cleanest",
+       "status": "optimal",
+       "safe": true,
+       "risk_ok": true,
+       "replans": 0,
+       "reserve_margin_kwh": 0.0,
+       "forecast_fallback": false,
+       "signal_fallback": false,
+       "totals": {
+        "cost_bdt": 152702.7,
+        "co2_kg": 9092.9,
+        "grid_kwh": 13810.5,
+        "solar_used_kwh": 567.3,
+        "generator_kwh": 732.9,
+        "generator_h": 2.0,
+        "diesel_l": 197.9
+       },
+       "battery_start_soc_kwh": 500.0,
+       "battery_end_soc_kwh": 500.0,
+       "notes": [
+        "Plan uses P50 solar and P50 base load; battery must end the day at or above its starting charge (500.0 kWh).",
+        "EV 18:00-24:00 are an evening plug-in window for the next departure: charging there is optional; the departure energy is required only before 07:00-07:15.",
+        "HVAC comfort is modelled as the occupied minimum power (no thermal model), so pre-cooling is not used."
+       ]
+      }
+     }
+    ],
+    "provenance": [],
+    "unverified_numbers": [],
+    "rounds": 2,
+    "model": "openai/gpt-oss-120b",
+    "prompt_version": "explainer_system v3 (2026-11-18)"
+   }
+  }
+ ]
+}
