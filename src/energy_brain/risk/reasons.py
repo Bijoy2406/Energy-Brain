@@ -3,7 +3,7 @@
 Every string in ``RiskReport.reasons`` is one line::
 
     RISK FAIL: check=<code>; scenario=solar_<q>,load_<q>; slots=<ranges|none>; shortfall_kwh=<x.x>;
-    limit=<energy|power|none>; at_risk=<comfort,ev,base_load|none>; reserve_kwh=<old>-><new>;
+    limit=<energy|power|energy,power|none>; at_risk=<comfort,ev,base_load|none>; reserve_kwh=<old>-><new>;
     fixable=<yes|no>; detail=<free text>
 
 (one line in practice). ``RISK FAIL`` lines make ``ok`` False; ``RISK NOTE`` lines are advisory and never do.
@@ -29,9 +29,10 @@ REASON_KEYS = (
     "detail",
 )
 
-#: Check codes. ``unserved_energy`` and ``unsafe_plan`` are failures; the others are notes.
+#: Check codes. ``unserved_energy``, ``unsafe_plan`` and ``replay_error`` are failures; the others are notes.
 CHECK_UNSERVED = "unserved_energy"
 CHECK_UNSAFE = "unsafe_plan"
+CHECK_ERROR = "replay_error"
 CHECK_END_SOC = "end_soc_short"
 CHECK_ADVISORY = "advisory_unserved"
 
