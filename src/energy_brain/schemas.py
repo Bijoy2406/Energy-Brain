@@ -294,7 +294,8 @@ class Totals(_SlotModel):
 class RiskReport(_Model):
     """Risk agent output (#18).
 
-    ``ok`` False = plan fails under pessimistic (P10 solar / P90 load) conditions; ``reasons`` say why.
+    ``ok`` False = plan fails under the stress scenario (default P10 solar / P50 load; a P90-load replay is
+    advisory only) or is unsafe; ``reasons`` say why, one stable line each (see ``risk.parse_reason``).
     ``reserve_margin_kwh`` = battery reserve the Risk agent asks the Planner to keep on the next re-plan.
     ``replans`` = number of re-plans the orchestrator ran before this report (filled by the orchestrator).
     """
