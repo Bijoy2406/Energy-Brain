@@ -53,6 +53,11 @@ CAVEATS = (
     "too.",
     "HVAC runs at its occupied minimum in every method (no thermal model), so HVAC is not a source of "
     "savings.",
+    "Settlement reuses the Risk agent's shortfall recourse: when actual solar beats the plan with no gap to "
+    "close, the extra solar is curtailed instead of replacing grid import. This only penalises the optimiser "
+    "(the baselines are built on actuals).",
+    "The grid CO2 factor is flat (no hourly grid-carbon data), so shifting grid use in time cannot cut CO2; "
+    "CO2 changes come only from diesel vs grid and battery round-trip losses.",
 )
 
 #: Numeric row fields summed per method in the summary.
@@ -218,37 +223,54 @@ def summarise(days: list[dict], weights: list[float], headline_weight: float) ->
     }
 
 
-def headline(summary: dict[str, Any]) -> dict[str, Any]:
+def headline(summary: dict[str, Any], config: dict[str, Any] | None = None) -> dict[str, Any]:
     """Pitch-ready headline at the headline weight, with its caveats and every baseline named."""
+    config = config or {}
     w = summary["headline_weight"]
     block = summary["by_weight"][f"{w:g}"]
     d = summary["days"]
     names = {SOLAR_FIRST: "solar-first / charge-on-arrival rule", TIME_OF_USE: "simple time-of-use rule"}
+    sample = (
+        f"out-of-sample days of {config['test_year']}"
+        if config.get("out_of_sample") and "test_year" in config
+        else "days (NOT all out-of-sample)"
+    )
     lines = [
-        f"Backtest over {d['included']} out-of-sample days of 2024 (synthetic load, simulated PV, synthetic "
-        f"outages), weight w={w:g} (1 = cheapest, 0 = cleanest)."
+        f"Backtest over {d['included']} {sample} (synthetic load, simulated PV, synthetic outages), "
+        f"{d['outage_days']} of them with an outage; weight w={w:g} (1 = cheapest, 0 = cleanest)."
     ]
     for b in BASELINES:
         v = block["vs"][b]
         lines.append(
-            f"vs the {names[b]}: cost {_fmt(v['cost_saved_pct'])} % lower ({v['cost_saved_bdt']:,.0f} BDT), "
-            f"CO2 {_fmt(v['co2_saved_pct'])} % lower ({v['co2_saved_kg']:,.0f} kg); worse on cost on "
-            f"{v['days_cost_worse']} days."
+            f"vs the {names[b]}: cost {_change(v['cost_saved_pct'])} "
+            f"({_amount(v['cost_saved_bdt'], 'BDT')}), "
+            f"CO2 {_change(v['co2_saved_pct'])} ({_amount(v['co2_saved_kg'], 'kg')}); "
+            f"outage days cost {_change(v['outage_days']['cost_saved_pct'])}, other days "
+            f"{_change(v['no_outage_days']['cost_saved_pct'])}; costlier than the baseline on "
+            f"{v['days_cost_worse']} of {d['included']} days."
         )
-    others = [k for k in summary["by_weight"] if k != f"{w:g}"]
-    for k in others:
+    for k in (k for k in summary["by_weight"] if k != f"{w:g}"):
         vs = summary["by_weight"][k]["vs"]
         lines.append(
-            f"At w={k}: cost/CO2 saved vs solar-first {_fmt(vs[SOLAR_FIRST]['cost_saved_pct'])} % / "
-            f"{_fmt(vs[SOLAR_FIRST]['co2_saved_pct'])} %, vs time-of-use "
-            f"{_fmt(vs[TIME_OF_USE]['cost_saved_pct'])} % / {_fmt(vs[TIME_OF_USE]['co2_saved_pct'])} %."
+            f"At w={k}: vs solar-first cost {_change(vs[SOLAR_FIRST]['cost_saved_pct'])}, CO2 "
+            f"{_change(vs[SOLAR_FIRST]['co2_saved_pct'])}; vs time-of-use cost "
+            f"{_change(vs[TIME_OF_USE]['cost_saved_pct'])}, CO2 {_change(vs[TIME_OF_USE]['co2_saved_pct'])}."
         )
     lines.append(FORECAST_LABEL)
     return {"weight": w, "baseline_names": names, "lines": lines}
 
 
-def _fmt(v: float | None) -> str:
-    return "n/a" if v is None else f"{v:.1f}"
+def _change(saved_pct: float | None) -> str:
+    """'4.7 % lower' / '0.3 % higher' for a saving percentage (positive = lower than the baseline)."""
+    if saved_pct is None:
+        return "n/a"
+    if abs(saved_pct) < 0.05:
+        return "about the same (within 0.05 %)"
+    return f"{abs(saved_pct):.1f} % {'lower' if saved_pct > 0 else 'higher'}"
+
+
+def _amount(saved: float, unit: str) -> str:
+    return f"{abs(saved):,.0f} {unit} {'less' if saved >= 0 else 'more'}"
 
 
 # ---------------------------------------------------------------------------------------------- config
@@ -349,7 +371,7 @@ def build_report(
             "report": "Energy Brain backtest (#20)",
             "schema_version": SCHEMA_VERSION,
             "caveats": list(CAVEATS),
-            "headline": headline(summary),
+            "headline": headline(summary, config),
             "summary": summary,
             "config": config,
             "run": run or {},
