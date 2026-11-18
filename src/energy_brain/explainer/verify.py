@@ -92,7 +92,8 @@ _TOKEN_RE = re.compile(
     re.IGNORECASE,
 )
 _PREFIX_BDT = re.compile(r"(?:BDT|Tk|৳)\s*$", re.IGNORECASE)
-_UNIT_GAP = re.compile(r"^[ \u00a0]*-?[ \u00a0]*")
+#: Gap between a number and its unit: any whitespace except a newline (incl. U+00A0, U+202F), or a hyphen.
+_UNIT_GAP = re.compile(r"^[^\S\n]*-?[^\S\n]*")
 _LIST_MARKER = re.compile(r"^(\s*)\d+[.)](\s+)", re.MULTILINE)
 
 

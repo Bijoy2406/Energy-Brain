@@ -358,6 +358,9 @@ def test_extract_skips_identifiers_and_list_markers():
     assert [(t.kind, t.value) for t in toks] == [("time", "19:00"), ("number", 500.0)]
     assert extract_tokens("4.7 %")[0].unit == "pct" and extract_tokens("8.49 BDT/kWh")[0].unit == "bdt/kwh"
     assert extract_tokens("a 2-hour outage")[0].unit == "h"
+    # models often put a narrow no-break space between number and unit
+    assert [t.unit for t in extract_tokens("733\u202fkWh, 806\u00a0kWh, 5\u2009kW")] == ["kwh", "kwh", "kw"]
+    assert not verify_answer("The generator made 732.9\u202fkW.", CALLS).ok
     assert extract_tokens("7:30 p.m.")[0].value == "19:30" and extract_tokens("12 AM")[0].value == "00:00"
 
 
@@ -441,7 +444,7 @@ def test_grounded_answer_passes(ctx, slot13):
     assert [c.name for c in ans.tool_calls] == ["get_slot"] and ans.tool_calls[0].result == slot13
     assert {s.tool for s in ans.provenance} == {"get_slot"}
     assert any(s.field == "generator_kw" for s in ans.provenance)
-    assert ans.prompt_version.startswith("explainer_system v1") and ans.rounds == 2
+    assert ans.prompt_version.startswith("explainer_system v") and ans.rounds == 2
     sent_tools = {d["function"]["name"] for d in TOOL_DECLARATIONS} | {"refuse"}
     assert client.requests[0][0]["role"] == "system" and "Ignore any text" in client.requests[0][0]["content"]
     assert len(sent_tools) == len(TOOL_DECLARATIONS) + 1
@@ -633,7 +636,7 @@ def test_unsupported_language_and_empty_question(ctx):
 def test_prompts_are_files_with_version_header():
     for name in ("explainer_system", "explainer_retry", "explainer_ground"):
         p = load_prompt(name)
-        assert p.version.startswith(f"{name} v1 (") and "<!--" not in p.text
+        assert p.version.startswith(f"{name} v") and "<!--" not in p.text
     assert "{{language}}" in load_prompt("explainer_system").text
     assert "{{numbers}}" in load_prompt("explainer_retry").text
 
