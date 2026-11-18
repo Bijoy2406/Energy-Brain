@@ -27,6 +27,8 @@ dependencies = [
     # backend
     "fastapi>=0.110",
     "uvicorn>=0.27",
+    # Explainer LLM client (#19): Groq through its OpenAI-compatible API
+    "openai>=1.40",
 ]
 
 [project.optional-dependencies]
