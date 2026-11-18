@@ -296,6 +296,7 @@ class ExplainerTools:
         return {
             "date": p.start.date().isoformat(),
             "day_window": {"from": self.label(0), "to": self.label(self.n)},
+            "slot_length_min": self.step,
             "weight": p.weight,
             "weight_meaning": "objective w*cost + (1-w)*CO2; 1 = cheapest, 0 = cleanest",
             "status": p.status,
@@ -382,7 +383,7 @@ class ExplainerTools:
         """Per-slot rows if the range is short, else hourly means (``_kw`` keys are means over the row)."""
         if b - a <= MAX_ROWS:
             rows = [{"time": self.label(t), **{k: _r(v[t]) for k, v in series.items()}} for t in range(a, b)]
-            return "15min", rows
+            return "quarter_hour", rows
         per_hour = max(1, 60 // self.step)
         rows = []
         for u in range(a, b, per_hour):
@@ -397,7 +398,7 @@ class ExplainerTools:
                     },
                 }
             )
-        return "1h_mean", rows
+        return "hourly_mean", rows
 
     def get_slot_range(self, start: str, end: str) -> dict[str, Any]:
         a, b = self.span(start, end)
@@ -689,6 +690,6 @@ class ExplainerTools:
             "weight": float(key),
             "year_vs_baselines": year,
             "day": day,
-            "caveat": "synthetic load, simulated PV, synthetic outages; forecasts used observed weather "
-            "(tier-0); baselines run on actual solar and load",
+            "caveat": "synthetic load, simulated PV, synthetic outages; forecasts used observed weather as "
+            "input, not a weather forecast; baselines run on actual solar and load",
         }

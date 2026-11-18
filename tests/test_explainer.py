@@ -166,9 +166,9 @@ def test_range_sums_are_computed_by_the_tool(ctx, tools):
     assert (day["from"], day["to"], day["duration_h"]) == ("00:00", "24:00", 24.0)
     assert day["cost_bdt"] == round(tot.cost_bdt, 1)
     assert day["energy_kwh"]["generator"] == round(tot.generator_kwh, 1)
-    assert day["resolution"] == "1h_mean" and len(day["rows"]) == 24
+    assert day["resolution"] == "hourly_mean" and len(day["rows"]) == 24
     short = tools.call("get_slot_range", {"start": "13:00", "end": "14:00"})
-    assert short["resolution"] == "15min" and [r["time"] for r in short["rows"]] == [
+    assert short["resolution"] == "quarter_hour" and [r["time"] for r in short["rows"]] == [
         "13:00",
         "13:15",
         "13:30",
@@ -291,3 +291,90 @@ def test_bad_arguments_raise(tools, name, args):
 )
 def test_parse_clock(text, minutes):
     assert parse_clock(text) == minutes
+
+
+# --------------------------------------------------------------------------- verify
+
+from energy_brain.explainer.verify import collect_facts, extract_tokens, verify_answer  # noqa: E402
+
+SLOT_19 = {
+    "time": "19:00",
+    "end": "19:15",
+    "battery_discharge_kw": 500.0,
+    "generator_kw": 269.8,
+    "load_total_kw": 769.8,
+    "tariff_bdt_per_kwh": 11.78,
+    "binding": [{"flag": "generator_at_min_load", "min_kw": 240.0}],
+}
+SUMMARY = {"date": "2024-07-02", "totals": {"cost_bdt": 152702.7, "generator_kwh": 732.9, "generator_h": 2.0}}
+CALLS = [
+    ("get_slot", SLOT_19),
+    ("get_plan_summary", SUMMARY),
+    ("find_slots", {"blocks": [{"from": "18:00"}]}),
+]
+
+
+def test_verify_passes_with_rounding_times_and_dates():
+    text = (
+        "On 2 July 2024 at 7 PM the battery gave 500 kW and the generator 270 kW (its minimum is 240 kW). "
+        "The day costs BDT 152,703 and the generator makes 732.9 kWh in 2 h, from 18:00 to 19:15."
+    )
+    r = verify_answer(text, CALLS)
+    assert r.ok, r.unverified
+    by_text = {s.text: (s.tool, s.field) for s in r.sources}
+    assert by_text["500 kW"] == ("get_slot", "battery_discharge_kw")
+    assert by_text["270 kW"] == ("get_slot", "generator_kw")
+    assert by_text["152,703"] == ("get_plan_summary", "totals.cost_bdt")
+    assert by_text["7 PM"] == ("get_slot", "time")
+    assert by_text["2 July 2024"] == ("get_plan_summary", "date")
+
+
+@pytest.mark.parametrize(
+    ("text", "bad"),
+    [
+        ("The generator ran at 300 kW.", "300 kW"),  # invented
+        ("The generator made 732.9 kW.", "732.9 kW"),  # wrong unit (kWh in the tool)
+        ("The generator made 0.73 MWh.", "0.73 MWh"),  # unit conversion
+        ("The day costs BDT 153,000.", "153,000"),  # rounded beyond the shown precision
+        ("The generator covers 269.8 kW, i.e. 35 % of the load.", "35 %"),  # computed percentage
+        ("At 20:00 the battery is empty.", "20:00"),  # time not in any tool output
+        ("The generator ran at 269.81 kW.", "269.81 kW"),  # more precision than the tool
+    ],
+)
+def test_verify_fails_on_untraceable(text, bad):
+    r = verify_answer(text, CALLS)
+    assert not r.ok and r.unverified == [bad]
+
+
+def test_number_only_in_question_does_not_count():
+    question = "Why did the generator run at 450 kW at 19:00?"
+    answer = "The generator ran at 450 kW."
+    assert not verify_answer(answer, CALLS).ok
+    assert verify_answer(answer, CALLS, allow=[question]).ok  # refusals only
+
+
+def test_extract_skips_identifiers_and_list_markers():
+    toks = extract_tokens("1. P10 solar and CO2 at 19:00\n2) 500 kW")
+    assert [(t.kind, t.value) for t in toks] == [("time", "19:00"), ("number", 500.0)]
+    assert extract_tokens("4.7 %")[0].unit == "pct" and extract_tokens("8.49 BDT/kWh")[0].unit == "bdt/kwh"
+    assert extract_tokens("a 2-hour outage")[0].unit == "h"
+    assert extract_tokens("7:30 p.m.")[0].value == "19:30" and extract_tokens("12 AM")[0].value == "00:00"
+
+
+def test_midnight_and_sign():
+    calls = [("x", {"to": "24:00", "co2_saved_pct": -0.3})]
+    assert verify_answer("until 00:00, CO2 0.3 % higher", calls).ok
+
+
+def test_facts_inherit_units_and_read_strings():
+    facts = collect_facts([("t", {"energy_kwh": {"generator": 5.0}, "detail": "grid +34.6 kWh at 18:15"})])
+    got = {(f.kind, f.value, f.unit) for f in facts}
+    assert ("number", 5.0, "kwh") in got and ("number", 34.6, "kwh") in got and ("time", "18:15", None) in got
+
+
+def test_every_tool_number_has_a_unit_or_is_a_known_count(tools):
+    unitless_ok = {"weight", "replans", "block_count", "finding_count", "days_included", "days_cost_worse"}
+    for name, args in ALL_CALLS:
+        for f in collect_facts([(name, tools.call(name, args))]):
+            if f.kind == "number" and f.unit is None and f.field.split(".")[-1] not in unitless_ok:
+                assert f.field in ("weight_meaning",) or "notes" in f.field or "detail" in f.field, (name, f)
