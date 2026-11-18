@@ -251,6 +251,58 @@ Example: `FORECAST FALLBACK: reason=out_of_range; method=analog_day; source=proc
 load_from=2024-11-19; data_range=2022-01-01..2024-12-31; detail=2026-11-17 outside data range
 2022-01-01..2024-12-31` (wrapped here; one line in practice).
 
+### Signal agent rules (#15, `energy_brain.signals.CalendarSignalAgent`)
+
+`CalendarSignalAgent(outages_df=None, signals_config=None, data_dir=None, data_range=(2022-01-01, 2024-12-31),
+config=None).run(start)`. Nothing is read at import or construction; `config/signals.yaml` and the outage
+calendar are loaded on the first `run` and cached. Slot count and length come from `n_slots()` /
+`slot_minutes()`, never the 96 / 15 defaults of `data.outages.get_daily_outage_mask`.
+
+| Field | Per slot t (slot start `s_t`) | Source (as of) |
+| --- | --- | --- |
+| `tariff_bdt_per_kwh` | `get_tariff_for_datetime(s_t)`: peak 17:00–23:00, off-peak 23:00–06:00, else flat. Slot start decides: 05:45 off-peak / 06:00 flat, 16:45 flat / 17:00 peak, 22:45 peak / 23:00 off-peak. A slot straddling a window edge (only possible if `slot_minutes` does not divide 60) raises `ValueError` | BERC MT-3 (2024-02) |
+| `grid_co2_kg_per_kwh` | flat `grid_emission.factor_kg_per_kwh` = 0.62. No hourly grid-carbon data exists; none is invented | DoE / UNFCCC BUR1 (2022) |
+| `diesel_price_bdt_per_l` | flat `diesel.price_bdt_per_l` = 107 | BPC (2024-05) |
+| `diesel_co2_kg_per_l` | flat `diesel.emission_factor_kg_per_l` = 2.68 | IPCC 2006 / DEFRA |
+| `outage` | true when any outage event overlaps any part of `[s_t, s_t + slot)` (partial overlap rounds up, same rule as `get_daily_outage_mask`). The Planner fixes grid import to 0 there | synthetic seeded calendar (#9) |
+
+`agent.provenance()` returns one line with every source and as-of date (for the Data and AI provenance document).
+
+**Outage events**, first that works: `outages_df` passed in (`source=injected`); `data/processed/outages.parquet`
+(`source=processed`); otherwise `generate_outage_events()` in memory with its default seed and range
+(`source=generated`, the same calendar the processed file is built from). The agent never needs a file, so CI
+(no `data/processed/`) works. `data/sample/` is not used (one week only). Naive event timestamps are read as
+Asia/Dhaka.
+
+**Calendar range.** `data_range` (default 2022-01-01..2024-12-31 for every source) is the span the calendar
+covers; a day inside it with no events means no outage. Each calendar day the window touches is resolved on its
+own. A day outside the range uses the **analog day**: the same calendar day in the latest year of the range,
+moved to the nearest same weekday (−3..+3 days), the same rule the Forecast agent uses for load, so on a
+real 2026 date the outage day equals the Forecast's `load_from` when the Forecast reads the full
+`data/processed` history (not when it falls back to the one-week `data/sample`). The analog day's events (clipped to that day)
+are shifted onto the target day, and the run is flagged. Example: 2026-11-18 (Wed) → 2024-11-20 (Wed).
+
+**Start handling.** Naive or off-slot `start` raises `ValueError`; an aware `start` in another zone is converted.
+A non-midnight `start` is fully supported and is **not** a fallback: tariff is read per timestamp and the
+outage window may span two calendar days (each resolved as above). The Forecast agent still falls back to
+persistence for a non-midnight start (`non_midnight_start`).
+
+**Fallback note** (one line, stable, same key=value style as the forecast note). `SignalTable` has no note
+field, so the note is returned by `run_with_note(start) -> (SignalTable, note | None)`, stored in
+`agent.last_note` (reset on every `run`) and logged with `logger.warning`. `energy_brain.signals.parse_note` /
+`format_note` read and build it:
+
+```
+SIGNAL FALLBACK: reason=out_of_range; method=analog_day; source=<injected|processed|generated>; outage_from=<YYYY-MM-DD>[,<YYYY-MM-DD>]; data_range=<YYYY-MM-DD..YYYY-MM-DD>; detail=<free text>
+```
+
+`outage_from` lists the analog day of every out-of-range day in the window. The only reason code so far is
+`out_of_range` (a day of the window is outside `data_range`). The note is `None` when every day came from the
+calendar itself.
+
+**Known gap:** signal notes do not reach `PlanResult.notes` (or `fallback_used`). The follow-up is a
+`SignalTable.note` field plus an orchestrator change, to be agreed with the team.
+
 ## 5. Orchestrator
 
 `run_plan(start, weight, *, forecast_agent, signal_agent, assets, planner, risk, max_replans=3)`:
@@ -264,8 +316,8 @@ load_from=2024-11-19; data_range=2022-01-01..2024-12-31; detail=2026-11-17 outsi
    raise: `optimal` becomes `feasible` and Risk's reasons are appended to `notes`.
 
 Real agents: `run_plan(start, weight, **energy_brain.defaults.build_default_agents())` uses
-`ModelForecastAgent` (#14), `AssetAgent` (#16) and `MilpPlanner` (#17), with `StubSignalAgent` and `StubRisk`
-until #15 / #18 land. Override any of them by keyword, e.g. `build_default_agents(risk=MyRisk())`.
+`ModelForecastAgent` (#14), `CalendarSignalAgent` (#15), `AssetAgent` (#16) and `MilpPlanner` (#17), with
+`StubRisk` until #18 lands. Override any of them by keyword, e.g. `build_default_agents(risk=MyRisk())`.
 
 ## 6. Handover formats for the phase-1 teammate
 
@@ -292,7 +344,8 @@ outage from 13:00 to 14:00 sets slots 52–55 to `true`. Partial-slot outages ro
 **STUB DATA - PLACEHOLDERS ONLY, NEVER USE IN THE PITCH.** The real asset agent (#16) is
 `energy_brain.assets.AssetAgent`, a drop-in replacement for `StubAssetProvider` (same shape; it differs only
 in marking off-days unoccupied). The real forecast agent (#14) is `energy_brain.forecast.ModelForecastAgent`,
-a drop-in replacement for `StubForecastAgent`.
+a drop-in replacement for `StubForecastAgent`. The real signal agent (#15) is
+`energy_brain.signals.CalendarSignalAgent`, a drop-in replacement for `StubSignalAgent`.
 
 ```python
 from datetime import datetime
