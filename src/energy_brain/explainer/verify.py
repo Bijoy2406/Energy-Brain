@@ -19,6 +19,10 @@ gives a unit, the fact must have the same unit (so ``732.9 kW`` does not match `
 never matches anything because no tool returns MWh). A unitless answer number may match any fact. Times match
 ``HH:MM`` facts (``00:00`` and ``24:00`` are the same instant), dates match date facts. Numbers that appear
 only in the operator's question never count, except in a refusal (``allow`` texts).
+
+**Scope.** The check proves a number was *returned by a tool*, not that it is true: a number inside upstream
+free text (a planner note, a Risk detail) counts. Prompt injection is handled elsewhere (data-only prompt,
+read-only tools, unknown tools never executed).
 """
 
 from __future__ import annotations
