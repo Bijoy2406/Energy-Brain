@@ -185,6 +185,72 @@ fallback and the checker `planner.find_violations`):
   diagnostic only and may break the energy balance. The Explainer, Risk and API must refuse to act on it.
 - `solve_seconds` is the wall time of the whole `plan()` call (build, solve, checks).
 
+### Forecast agent rules (#14, `energy_brain.forecast.ModelForecastAgent`)
+
+`ModelForecastAgent(weather_df=None, pv_df=None, load_df=None, models_dir=None, data_dir=None).run(start)`.
+Frames passed in replace the files (tests, notebooks). Data is read lazily on the first `run` and cached, so
+importing or constructing the agent never touches the git-ignored `data/processed/` or `models/`.
+
+`Forecast.load` is the **inflexible base load** (`base_kw` of `load.parquet`): no HVAC, no EV.
+
+| Tier | Used when | Solar P50 | Load P50 | `fallback_used` |
+| --- | --- | --- | --- | --- |
+| 0 Model | `start` is 00:00, all six `models/{solar,load}_p{10,50,90}.txt` exist, and weather + PV + load are complete for the target day **and** the 7 days before it (lag features) | `solar.predict` | `load.predict` | false, `note = null` |
+| 1 Persistence | tier 0 blocked or failed and a recent day exists | same slot 1 day earlier (up to 7 days back) | same slot 7 days earlier (same weekday, up to 4 weeks back) | true |
+| 2 Analog day | no recent day (date outside the data) | same calendar day in the latest year with data, else the latest day | same, moved to the nearest same weekday, else the latest same weekday | true |
+| 3 | `data/processed/` lacks any of the three files | tiers 1–2 from `data/sample/` (one week, 2024-06-01..07) | | true |
+| 4 | not even `data/sample/` | raises `ForecastUnavailableError` | | |
+
+- **No training during planning.** The agent checks the model files itself before calling `predict()`, so
+  `predict()`'s auto-train path is never reached. Missing models → tier 1/2 with `models_missing`.
+- **No silent gap filling.** `predict()` interpolates/forward-fills missing weather and lags. The agent only
+  calls it when the target day and its 7 lag days are complete (24 weather hours, 96 PV and 96 load slots per
+  day); otherwise `out_of_range` or `history_incomplete`.
+- **Persistence bands:** P10/P90 are per-slot 10th/90th percentiles over up to 7 consecutive days (solar) or 4
+  same-weekday days (load) ending at the source day, widened to contain P50. With one usable day (e.g. load
+  from `data/sample`) the band has zero width.
+- **Quantile repair:** values are clipped to ≥ 0 and made ordered when a violation is ≤ 1e-6 kW. NaN/inf or a
+  larger violation in model output is never repaired: it becomes `invalid_output` and tier 1/2 is used.
+- **Start handling:** a naive `start` or one off a slot boundary raises `ValueError` (programmer error). An aware
+  `start` in another zone is converted; `Forecast.start` equals it. **MVP limitation:** the models only forecast
+  whole days, so a non-midnight `start` goes straight to persistence (`non_midnight_start`); the window may span
+  two calendar days.
+- Any other exception from the model step becomes `prediction_error`. The agent never raises for missing models
+  or data.
+
+**Observed weather as forecast.** Tier 0 feeds the target day's *observed* (reanalysis) weather into the models as
+if it were a weather forecast. Tier 0 accuracy is therefore an upper bound on a real day-ahead forecast.
+
+**Demo and backtests must replay dates inside 2022-01-01..2024-12-31.** Only there does tier 0 (the trained
+models) run for real; it needs `data/processed/` and `models/` built locally (`docs/data-sources.md`, then
+`python -m energy_brain.forecast.solar --train` and `... .load --train`). Any later date, such as today's,
+is outside the data and always gets an `analog_day` fallback.
+
+**Fallback note format** (one line, stable; the Explainer may quote it). `energy_brain.forecast.parse_note(note)`
+returns the fields as a dict, `format_note(fields)` builds one:
+
+```
+FORECAST FALLBACK: reason=<code>[,<code>...]; method=<persistence|analog_day>; source=<processed|sample|injected>; solar_from=<YYYY-MM-DD>; load_from=<YYYY-MM-DD>; data_range=<YYYY-MM-DD..YYYY-MM-DD>; detail=<free text>
+```
+
+`solar_from` / `load_from` are the days whose slot 0 was copied. `method=persistence` only if both series use a
+recent day. `detail` is free text (`;` replaced by `,`), always last. Reason codes, in check order:
+
+| Code | Meaning |
+| --- | --- |
+| `non_midnight_start` | `start` is not 00:00 local |
+| `axis_mismatch` | config time axis is not 96 × 15 min in Asia/Dhaka (what the models were trained on) |
+| `out_of_range` | target day outside `data_range` (first..last complete day) |
+| `history_incomplete` | target day or one of its 7 lag days has gaps |
+| `models_missing` | a model file is missing in `models_dir` (listed in `detail`) |
+| `prediction_error` | `predict()` raised (exception in `detail`) |
+| `invalid_output` | model output NaN/inf, wrong length/timestamps or quantiles out of order beyond tolerance |
+| `processed_data_missing` | added when `data/sample/` was used because `data/processed/` is incomplete |
+
+Example: `FORECAST FALLBACK: reason=out_of_range; method=analog_day; source=processed; solar_from=2024-11-17;
+load_from=2024-11-19; data_range=2022-01-01..2024-12-31; detail=2026-11-17 outside data range
+2022-01-01..2024-12-31` (wrapped here; one line in practice).
+
 ## 5. Orchestrator
 
 `run_plan(start, weight, *, forecast_agent, signal_agent, assets, planner, risk, max_replans=3)`:
@@ -196,6 +262,10 @@ fallback and the checker `planner.find_violations`):
    re-plan, re-check.
 4. Returns the last `PlanResult` with `risk` filled (`replans` counted). If Risk still fails, it does **not**
    raise: `optimal` becomes `feasible` and Risk's reasons are appended to `notes`.
+
+Real agents: `run_plan(start, weight, **energy_brain.defaults.build_default_agents())` uses
+`ModelForecastAgent` (#14), `AssetAgent` (#16) and `MilpPlanner` (#17), with `StubSignalAgent` and `StubRisk`
+until #15 / #18 land. Override any of them by keyword, e.g. `build_default_agents(risk=MyRisk())`.
 
 ## 6. Handover formats for the phase-1 teammate
 
@@ -221,7 +291,8 @@ outage from 13:00 to 14:00 sets slots 52–55 to `true`. Partial-slot outages ro
 `StubAssetProvider` / `stub_assets(start)`, `StubPlanner`, `StubRisk`, `FailOnceRisk`.
 **STUB DATA - PLACEHOLDERS ONLY, NEVER USE IN THE PITCH.** The real asset agent (#16) is
 `energy_brain.assets.AssetAgent`, a drop-in replacement for `StubAssetProvider` (same shape; it differs only
-in marking off-days unoccupied).
+in marking off-days unoccupied). The real forecast agent (#14) is `energy_brain.forecast.ModelForecastAgent`,
+a drop-in replacement for `StubForecastAgent`.
 
 ```python
 from datetime import datetime
