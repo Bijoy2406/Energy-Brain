@@ -5,6 +5,7 @@ import ScheduleCharts from './chart/ScheduleCharts'
 import { formatBdt, formatKg, formatHours } from './chart/scheduleData'
 import WeightSlider from './components/WeightSlider'
 import AnimatedValue from './components/AnimatedValue'
+import ExplainerPanel from './components/ExplainerPanel'
 import './App.css'
 
 function PlanSummary({ plan }: { plan: PlanResponse }) {
@@ -38,7 +39,7 @@ function PlanSummary({ plan }: { plan: PlanResponse }) {
   </>
 }
 
-function PlanPanel({ date, weight }: { date: string; weight: number }) {
+function PlanPanel({ date, weight, onPlan }: { date: string; weight: number; onPlan: (plan: PlanResponse) => void }) {
   const request = useMemo(() => ({ date, w: weight }), [date, weight])
   const [state, setState] = useState<{
     request: typeof request
@@ -52,6 +53,7 @@ function PlanPanel({ date, weight }: { date: string; weight: number }) {
     const timer = setTimeout(() => {
       void api.plan(request, controller.signal).then((result) => {
         if (!active || (!result.ok && result.error.kind === 'aborted')) return
+        if (result.ok) onPlan(result.data)
         setState((previous) => ({
           request, result,
           previousPlan: result.ok ? result.data : previous?.previousPlan ?? null,
@@ -63,7 +65,7 @@ function PlanPanel({ date, weight }: { date: string; weight: number }) {
       clearTimeout(timer)
       controller.abort()
     }
-  }, [request])
+  }, [request, onPlan])
 
   const loading = state?.request !== request
   const plan = state?.previousPlan
@@ -81,7 +83,8 @@ function PlanPanel({ date, weight }: { date: string; weight: number }) {
 export default function App() {
   const [days, setDays] = useState<ApiResult<DayInfo[]> | null>(null)
   const [selectedDate, setSelectedDate] = useState('')
-  const [weight, setWeight] = useState(1)
+  const [weight, setWeight] = useState(0.5)
+  const [shownPlan, setShownPlan] = useState<PlanResponse | null>(null)
   const selectedDay = days?.ok ? days.data.find((day) => day.date === selectedDate) : undefined
 
   useEffect(() => {
@@ -127,13 +130,9 @@ export default function App() {
           <section className="panel schedule-panel" aria-labelledby="schedule-title">
             <div className="panel-heading"><h2 id="schedule-title">Schedule dashboard</h2><span className="muted">Daily plan</span></div>
             <WeightSlider value={weight} onChange={setWeight} />
-            {selectedDate && <PlanPanel date={selectedDate} weight={weight} />}
+            {selectedDate && <PlanPanel date={selectedDate} weight={weight} onPlan={setShownPlan} />}
           </section>
-          <aside className="panel chat-panel" aria-labelledby="chat-title">
-            <p className="eyebrow">PLAN EXPLAINER</p><h2 id="chat-title">Ask about your plan</h2>
-            <p className="muted">Chat is coming soon. Explanations will use the planner’s results.</p>
-            <div className="chat-placeholder">Your plan’s story, backed by its numbers.</div>
-          </aside>
+          <ExplainerPanel date={selectedDate} weight={shownPlan?.weight ?? weight} />
         </div>
       </main>
       <footer>Energy Brain · Site time: Asia/Dhaka</footer>

@@ -1,13 +1,13 @@
 import { useId } from 'react'
 
-export default function WeightSlider({ value = 1, onChange }: {
+export default function WeightSlider({ value = 0.5, onChange }: {
   value?: number
   onChange: (value: number) => void
 }) {
   const id = useId()
   const meaning = value === 0 ? 'Cleanest' : value === 1 ? 'Cheapest'
-    : value < 0.5 ? 'weighted toward lower CO2' : value > 0.5 ? 'weighted toward lower cost'
-      : 'equal cost and CO2 weighting'
+    : value >= 0.4 && value <= 0.6 ? 'Balanced'
+      : value < 0.4 ? 'weighted toward lower CO2' : 'weighted toward lower cost'
   const valueText = `w = ${value.toFixed(2)} - ${meaning}`
 
   return <div className="weight-control">

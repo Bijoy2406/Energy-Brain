@@ -19,7 +19,7 @@ function mockApi(plan = planFixture(), dayList = days) {
 }
 
 describe('schedule dashboard', () => {
-  it('loads labelled days, selects the demo day and requests its plan at w=1', async () => {
+  it('loads labelled days, selects the demo day and requests its plan at w=0.5', async () => {
     const fetchMock = mockApi()
     render(<App />)
     const picker = await screen.findByRole('combobox', { name: 'Planning day' })
@@ -31,7 +31,7 @@ describe('schedule dashboard', () => {
     expect(screen.getByText('optimal')).toBeInTheDocument()
     expect(screen.getByText('Safe')).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledWith('http://localhost:8000/plan', expect.objectContaining({
-      method: 'POST', body: '{"date":"2024-07-02","w":1}',
+      method: 'POST', body: '{"date":"2024-07-02","w":0.5}',
     }))
     expect(screen.getAllByText('Synthetic load, simulated PV, synthetic outages. Historical replay.').length).toBeGreaterThan(0)
   })
@@ -239,9 +239,11 @@ describe('cost and carbon control', () => {
   }
 
   it('shows accessible endpoints, current meaning and the honest note', async () => {
-    mockApi(planFixture({ weight: 1, weight_requested: 1 }))
+    mockApi()
     const slider = await start()
-    expect(slider).toHaveValue('1')
+    expect(slider).toHaveValue('0.5')
+    expect(slider).toHaveAttribute('aria-valuetext', 'w = 0.50 - Balanced')
+    expect(screen.getByText('w = 0.50 - Balanced')).toBeInTheDocument()
     expect(slider).toHaveAttribute('min', '0')
     expect(slider).toHaveAttribute('max', '1')
     expect(slider).toHaveAttribute('step', '0.05')
@@ -254,8 +256,14 @@ describe('cost and carbon control', () => {
     expect(screen.getByText('w = 0.30 - weighted toward lower CO2')).toBeInTheDocument()
     fireEvent.change(slider, { target: { value: '0.7' } })
     expect(slider).toHaveAttribute('aria-valuetext', 'w = 0.70 - weighted toward lower cost')
-    fireEvent.change(slider, { target: { value: '0.5' } })
-    expect(slider).toHaveAttribute('aria-valuetext', 'w = 0.50 - equal cost and CO2 weighting')
+    for (const value of ['0.4', '0.5', '0.6']) {
+      fireEvent.change(slider, { target: { value } })
+      expect(slider).toHaveAttribute('aria-valuetext', `w = ${Number(value).toFixed(2)} - Balanced`)
+    }
+    fireEvent.change(slider, { target: { value: '0' } })
+    expect(slider).toHaveAttribute('aria-valuetext', 'w = 0.00 - Cleanest')
+    fireEvent.change(slider, { target: { value: '1' } })
+    expect(slider).toHaveAttribute('aria-valuetext', 'w = 1.00 - Cheapest')
   })
 
   it('debounces quick changes to the last weight and keeps it when the day changes', async () => {
@@ -288,7 +296,7 @@ describe('cost and carbon control', () => {
     let oldSignal!: AbortSignal
     vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
       if (url.endsWith('/days')) return json(days)
-      if (JSON.parse(String(init?.body)).w === 1) {
+      if (JSON.parse(String(init?.body)).w === 0.5) {
         oldSignal = init?.signal as AbortSignal
         return new Promise<Response>((resolve) => { resolveOld = resolve })
       }
@@ -313,7 +321,7 @@ describe('cost and carbon control', () => {
     fetchMock.mockImplementation(() => new Promise<Response>(() => {}))
     fireEvent.change(slider, { target: { value: '0.3' } })
     await tick()
-    fireEvent.change(slider, { target: { value: '1' } })
+    fireEvent.change(slider, { target: { value: '0.5' } })
     expect(screen.getByRole('region', { name: 'Plan results' })).toHaveAttribute('aria-busy', 'true')
     expect(screen.getByText('152,703')).toBeInTheDocument()
   })
