@@ -1,7 +1,7 @@
 import { useId, useMemo, useState } from 'react'
 import { Bar, BarChart, CartesianGrid, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import type { BacktestData, Baseline } from '../backtest/data'
-import { useBacktestDays } from '../backtest/data'
+import type { Baseline, DailyResponse } from '../backtest/data'
+import type { ApiResult } from '../api/client'
 import { compareDailyCost } from '../backtest/comparison'
 import { formatBdt } from '../formatting'
 import { useReducedMotion } from '../hooks/useReducedMotion'
@@ -20,9 +20,8 @@ function DailyTooltip({ row, name }: { row?: ChartRow; name: string }) {
   </div>
 }
 
-export default function BacktestChart({ source, weight }: { source: BacktestData; weight: number }) {
+export default function BacktestChart({ result, weight }: { result: ApiResult<DailyResponse> | null; weight: number }) {
   const [baseline, setBaseline] = useState<Baseline>('baseline_solar_first')
-  const result = useBacktestDays(source, weight, true)
   const reducedMotion = useReducedMotion()
   const id = useId().replace(/:/g, '')
   const rows = useMemo(() => {

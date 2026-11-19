@@ -1,18 +1,19 @@
-import { useState } from 'react'
-import { baselines, useBacktestReport } from '../backtest/data'
+import { useRef, useState } from 'react'
+import { baselines, useBacktestDays, useBacktestReport } from '../backtest/data'
 import type { BacktestData, Comparison, Report, WeightSummary } from '../backtest/data'
 import { savingWords } from '../backtest/comparison'
 import { formatBdt, formatHours, formatInteger, formatKg, formatKw, formatLitres, formatPercent } from '../formatting'
 import BacktestCaveats from './BacktestCaveats'
 import BacktestChart from '../chart/BacktestChart'
+import { useLimitsNavigation } from '../hooks/useLimitsNavigation'
 
-function ComparisonCard({ name, values, requested }: { name: string; values: Comparison; requested: number }) {
+function ComparisonCard({ name, values, requested, onSeeLimits }: { name: string; values: Comparison; requested: number; onSeeLimits: () => void }) {
   return <article className="panel comparison-card" aria-label={`Energy Brain vs ${name}`}>
     <p className="eyebrow">ENERGY BRAIN VS BASELINE</p>
     <h3>{name}</h3>
     <p className="comparison-result">{savingWords(values.cost_saved_pct, 'cost')} ({formatBdt(Math.abs(values.cost_saved_bdt))} BDT {values.cost_saved_bdt >= 0 ? 'less' : 'more'})</p>
     <p className="comparison-result">{savingWords(values.co2_saved_pct, 'CO2')} ({formatKg(Math.abs(values.co2_saved_kg))} kg {values.co2_saved_kg >= 0 ? 'less' : 'more'})</p>
-    <p className="muted">Adjusted results vs {name} · synthetic data, 2024 replay. See the limits of this replay below the results.</p>
+    <p className="muted">Adjusted results vs {name} · synthetic data, 2024 replay. <button type="button" className="limits-link" onClick={onSeeLimits}>See limits</button></p>
     <ul className="comparison-facts">
       <li>{formatHours(Math.abs(values.generator_hours_saved))} {values.generator_hours_saved >= 0 ? 'fewer' : 'more'} generator hours vs {name}</li>
       <li>{formatLitres(Math.abs(values.diesel_litres_saved))} {values.diesel_litres_saved >= 0 ? 'fewer' : 'more'} diesel litres vs {name}</li>
@@ -48,7 +49,7 @@ function ForecastQuality({ report }: { report: Report }) {
       <div><dt>Solar daylight-only P10–P90 coverage</dt><dd>{formatPercent(forecast.solar_daylight_p10_p90_coverage_pct)} %</dd></div>
       <div><dt>Load P10–P90 coverage</dt><dd>{formatPercent(forecast.load_p10_p90_coverage_pct)} %</dd></div>
     </dl>
-    <p className="warning">{forecast.label}</p>
+    <p className="muted">{forecast.label}</p>
     <p className="muted">{forecast.coverage_definition}</p>
     <p className="muted">synthetic data, 2024 replay</p>
   </section>
@@ -73,26 +74,30 @@ function Measurement({ report }: { report: Report }) {
   </details>
 }
 
-export default function BacktestView({ source }: { source: BacktestData }) {
+export default function BacktestView({ source, limitsRequest, onSeeLimits }: { source: BacktestData; limitsRequest: number; onSeeLimits: () => void }) {
   const result = useBacktestReport(source)
   const [weight, setWeight] = useState(0.5)
+  const dailyResult = useBacktestDays(source, result?.ok ? weight : null, true)
+  const content = useRef<HTMLDivElement>(null)
+  const limitsHeading = useRef<HTMLHeadingElement>(null)
+  useLimitsNavigation(limitsRequest, !!result?.ok && dailyResult !== null, content, limitsHeading)
   if (!result) return <p role="status">Loading backtest results…</p>
   if (!result.ok) return <p className="warning" role="alert">{result.error.kind !== 'aborted' && result.error.message}</p>
   const report = result.data
   const selected = report.summary.by_weight[String(weight)]
-  return <div className="backtest-view">
+  return <div className="backtest-view" ref={content}>
     <div><h2>Backtest results</h2><p className="muted">Baseline vs Energy Brain · adjusted settlement · synthetic data, 2024 replay</p></div>
     <div className="segmented-control backtest-weights" role="group" aria-label="Backtest weight">
       {([[0.5, 'Balanced w = 0.5 (headline)'], [1, 'Cheapest w = 1'], [0, 'Cleanest w = 0']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={weight === value} onClick={() => setWeight(value)}>{label}</button>)}
     </div>
-    <p className="warning backtest-caution">Read with caution: synthetic load, simulated PV and synthetic outages; 2024 replay on one simulated site. Full limits are listed below the results.</p>
+    <p className="warning backtest-caution">Read with caution: synthetic load, simulated PV and synthetic outages; 2024 replay on one simulated site. <button type="button" className="limits-link" onClick={onSeeLimits}>See limits</button></p>
     {selected ? <>
-      <div className="comparison-grid">{baselines.map((key) => <ComparisonCard key={key} name={report.headline.baseline_names[key]} values={selected.vs[key]} requested={report.summary.days.requested} />)}</div>
+      <div className="comparison-grid">{baselines.map((key) => <ComparisonCard key={key} name={report.headline.baseline_names[key]} values={selected.vs[key]} requested={report.summary.days.requested} onSeeLimits={onSeeLimits} />)}</div>
       <DaysCovered report={report} health={selected.plan_health} />
     </> : <p className="warning">This weight is not in the backtest summary.</p>}
     <ForecastQuality report={report} />
-    <BacktestChart source={source} weight={weight} />
-    <BacktestCaveats caveats={report.caveats} />
+    <BacktestChart result={dailyResult} weight={weight} />
     <Measurement report={report} />
+    <BacktestCaveats caveats={report.caveats} headingRef={limitsHeading} />
   </div>
 }

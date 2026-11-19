@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import App from './App'
 import { days, planFixture } from './test/fixtures'
 import { backtestDaysFixture, backtestFixture, baselineNames, caveats } from './test/backtestFixture'
@@ -21,7 +21,11 @@ function mockApi(report: () => Promise<Response> = async () => json(backtestFixt
   vi.stubGlobal('fetch', fetchMock)
   return fetchMock
 }
-afterEach(() => { window.history.replaceState(null, '', '/'); vi.unstubAllGlobals() })
+beforeEach(() => {
+  vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })))
+  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, writable: true, value: vi.fn() })
+})
+afterEach(() => { window.history.replaceState(null, '', '/'); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 async function openBacktest() {
   await userEvent.click(screen.getByRole('tab', { name: 'Backtest results' }))
   return screen.findByRole('heading', { name: baselineNames.baseline_solar_first })
@@ -78,14 +82,12 @@ it('opens from the hash, renders signed comparisons, every caveat, forecast and 
   expect(screen.getByRole('region', { name: 'Forecast quality' })).toHaveTextContent('12.1 kW')
 })
 
-it('puts a caution banner before results and all twelve full caveats after the daily chart', async () => {
-  const report = backtestFixture()
-  report.caveats = [...caveats, ...Array.from({ length: 9 }, (_, index) => `Additional replay limit ${index + 1}.`)]
-  mockApi(async () => json(report))
+it('puts the only caution banner before results and all twelve full caveats after measurement', async () => {
+  mockApi()
   render(<App />)
   await openBacktest()
   const panel = screen.getByRole('tabpanel')
-  const banner = within(panel).getByText('Read with caution: synthetic load, simulated PV and synthetic outages; 2024 replay on one simulated site. Full limits are listed below the results.')
+  const banner = within(panel).getByText(/Read with caution:/)
   const toggle = within(panel).getByRole('group', { name: 'Backtest weight' })
   expect(toggle.nextElementSibling).toBe(banner)
   const cards = within(panel).getAllByRole('article')
@@ -94,15 +96,20 @@ it('puts a caution banner before results and all twelve full caveats after the d
   const forecast = within(panel).getByRole('region', { name: 'Forecast quality' })
   const chart = within(panel).getByRole('region', { name: 'Daily cost comparison' })
   await within(chart).findByRole('application')
-  const limits = within(panel).getByRole('complementary', { name: 'Limits of this replay' })
+  const limits = within(panel).getByRole('region', { name: 'Limits and methodology' })
   const measurement = within(panel).getByText('How this was measured').closest('details')!
-  const ordered = [banner, ...cards, daysCovered, forecast, chart, limits, measurement]
+  const ordered = [banner, ...cards, daysCovered, forecast, chart, measurement, limits]
   ordered.slice(1).forEach((element, index) => {
     expect(ordered[index].compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
   expect(limits.parentElement).toBe(chart.parentElement)
-  expect(within(limits).getAllByRole('listitem')).toHaveLength(12)
-  for (const caveat of report.caveats) expect(within(limits).getByText(caveat)).toBeVisible()
+  expect(limits).toHaveTextContent('12 limits in 4 groups')
+  expect(limits).not.toHaveClass('warning')
+  expect(panel.querySelectorAll('.warning')).toHaveLength(1)
+  expect(limits.querySelectorAll('li')).toHaveLength(12)
+  expect(limits.querySelectorAll('details')).toHaveLength(4)
+  for (const group of limits.querySelectorAll('details')) expect(group).not.toHaveAttribute('open')
+  for (const caveat of caveats) expect(within(limits).getByText(caveat)).toBeInTheDocument()
   for (const card of [...cards, daysCovered, forecast, chart]) expect(card).toHaveTextContent('synthetic data, 2024 replay')
 })
 
@@ -151,8 +158,8 @@ it('rounds daily costs and CO2 in the same-day table and chart tooltip without c
   expect(sameDay).toHaveTextContent('Energy Brain saves 15,988 BDT (9.5 % lower cost)')
   expect(within(sameDay).getByText('153,158')).toBeInTheDocument()
   expect(within(sameDay).getByText('9,112')).toBeInTheDocument()
-  const sameDayLimits = within(sameDay).getByRole('complementary', { name: 'Limits of this replay' })
-  for (const caveat of caveats) expect(within(sameDayLimits).getByText(caveat)).toBeVisible()
+  expect(within(sameDay).getByRole('button', { name: 'See limits of these numbers' })).toBeInTheDocument()
+  for (const caveat of caveats) expect(within(sameDay).queryByText(caveat)).not.toBeInTheDocument()
   await openBacktest()
   const chart = await screen.findByRole('application', { name: /Daily cost saved in BDT/ })
   act(() => chart.focus())
@@ -212,7 +219,9 @@ it('shows same-day adjusted values and savings at the solved weight', async () =
   expect(within(card).getAllByRole('row')).toHaveLength(4)
   expect(card).toHaveTextContent('Energy Brain saves 20 BDT (20.0 % lower cost)')
   expect(card).toHaveTextContent('synthetic data, 2024 replay')
-  expect(card).toHaveTextContent(caveats[0])
+  expect(card).toHaveTextContent('Adjusted figures price any battery end-of-day shortfall')
+  expect(within(card).getByRole('button', { name: 'See limits of these numbers' })).toBeInTheDocument()
+  for (const caveat of caveats) expect(within(card).queryByText(caveat)).not.toBeInTheDocument()
 })
 
 it('explains a non-backtest date and an unsupported solved weight', async () => {
@@ -317,4 +326,69 @@ it('does not label the previous day settlement as the selected day while its pla
   await userEvent.selectOptions(screen.getByRole('combobox'), '2024-07-01')
   expect(within(region).queryByRole('table')).not.toBeInTheDocument()
   expect(region).toHaveTextContent('Waiting for the solved plan for 2024-07-01')
+})
+
+
+it.each([false, true])('navigates from the same-day card and focuses limits after loading (delayed: %s)', async (delayed) => {
+  let resolveReport!: (response: Response) => void
+  mockApi(delayed ? () => new Promise<Response>((resolve) => { resolveReport = resolve }) : undefined)
+  render(<App />)
+  const card = await screen.findByRole('region', { name: 'Baseline vs Energy Brain, same day' })
+  await within(card).findByRole('table')
+  await userEvent.click(within(card).getByRole('button', { name: 'See limits of these numbers' }))
+  expect(screen.getByRole('tab', { name: 'Backtest results' })).toHaveAttribute('aria-selected', 'true')
+  expect(window.location.hash).toBe('#limits')
+  if (delayed) {
+    expect(screen.getByRole('status')).toHaveTextContent('Loading backtest results')
+    await act(async () => resolveReport(json(backtestFixture())))
+  }
+  const heading = await screen.findByRole('heading', { name: 'Limits and methodology' })
+  await waitFor(() => expect(heading).toHaveFocus())
+  expect(heading).toHaveAttribute('tabindex', '-1')
+  expect(heading.scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })
+  expect(heading.closest('section')).toHaveAttribute('id', 'limits')
+  expect(heading.closest('section')!.querySelectorAll('details[open]')).toHaveLength(0)
+})
+
+it.each([false, true])('opens and focuses limits from the URL hash (reduced motion: %s)', async (reduced) => {
+  vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: reduced, addEventListener: vi.fn(), removeEventListener: vi.fn() })))
+  window.history.replaceState(null, '', '/#limits')
+  mockApi()
+  render(<App />)
+  expect(screen.getByRole('tab', { name: 'Backtest results' })).toHaveAttribute('aria-selected', 'true')
+  const heading = await screen.findByRole('heading', { name: 'Limits and methodology' })
+  await waitFor(() => expect(heading).toHaveFocus())
+  expect(window.matchMedia).toHaveBeenCalledWith('(prefers-reduced-motion: reduce)')
+  expect(heading.scrollIntoView).toHaveBeenCalledWith({ behavior: reduced ? 'instant' : 'smooth', block: 'start' })
+})
+
+it('focuses the limits heading from the banner and both comparison cards on every visit', async () => {
+  mockApi()
+  render(<App />)
+  await openBacktest()
+  const heading = screen.getByRole('heading', { name: 'Limits and methodology' })
+  const banner = screen.getByText(/Read with caution:/)
+  const cards = screen.getAllByRole('article')
+  for (const container of [banner, ...cards, banner]) {
+    await userEvent.click(within(container).getByRole('button', { name: 'See limits' }))
+    await waitFor(() => expect(heading).toHaveFocus())
+  }
+  await userEvent.click(screen.getByRole('tab', { name: "Today's plan" }))
+  act(() => {
+    window.history.replaceState(null, '', '/#limits')
+    window.dispatchEvent(new HashChangeEvent('hashchange'))
+  })
+  await waitFor(() => expect(heading).toHaveFocus())
+  expect(screen.getByRole('tab', { name: 'Backtest results' })).toHaveAttribute('aria-selected', 'true')
+})
+
+it('does not steal focus when a pending limits request is cancelled by switching tabs', async () => {
+  let resolveReport!: (response: Response) => void
+  mockApi(() => new Promise<Response>((resolve) => { resolveReport = resolve }))
+  window.history.replaceState(null, '', '/#limits')
+  render(<App />)
+  await userEvent.click(screen.getByRole('tab', { name: "Today's plan" }))
+  await act(async () => resolveReport(json(backtestFixture())))
+  expect(screen.getByRole('tab', { name: "Today's plan" })).toHaveFocus()
+  expect(document.querySelector('#backtest-panel')).toHaveAttribute('hidden')
 })

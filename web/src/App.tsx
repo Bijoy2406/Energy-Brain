@@ -12,7 +12,7 @@ import { createBacktestData } from './backtest/data'
 import type { BacktestData } from './backtest/data'
 import './App.css'
 
-function PlanSummary({ plan, source, selectedDate }: { plan: PlanResponse; source: BacktestData; selectedDate: string }) {
+function PlanSummary({ plan, source, selectedDate, onSeeLimits }: { plan: PlanResponse; source: BacktestData; selectedDate: string; onSeeLimits: () => void }) {
   const warnings = [...new Set([
     ...plan.banners,
     ...(plan.forecast_fallback.used ? [plan.forecast_fallback.note ?? 'Forecast fallback used.'] : []),
@@ -39,12 +39,12 @@ function PlanSummary({ plan, source, selectedDate }: { plan: PlanResponse; sourc
       <div tabIndex={0}><dt>Generator hours · h</dt><dd><AnimatedValue value={plan.plan.totals.generator_hours} format={formatHours} /></dd></div>
     </dl>
     <p className="muted">Totals are reported directly by the planner.</p>
-    <SameDayComparison plan={plan} source={source} selectedDate={selectedDate} />
+    <SameDayComparison plan={plan} source={source} selectedDate={selectedDate} onSeeLimits={onSeeLimits} />
     <ScheduleCharts response={plan} />
   </>
 }
 
-function PlanPanel({ date, weight, onPlan, source }: { date: string; weight: number; onPlan: (plan: PlanResponse) => void; source: BacktestData }) {
+function PlanPanel({ date, weight, onPlan, source, onSeeLimits }: { date: string; weight: number; onPlan: (plan: PlanResponse) => void; source: BacktestData; onSeeLimits: () => void }) {
   const request = useMemo(() => ({ date, w: weight }), [date, weight])
   const [state, setState] = useState<{
     request: typeof request
@@ -80,14 +80,17 @@ function PlanPanel({ date, weight, onPlan, source }: { date: string; weight: num
     {error && <p className="warning" role="alert">{error.message}</p>}
     {error && plan && <p className="muted">Showing previous plan: {plan.date}.</p>}
     <section aria-label="Plan results" aria-busy={loading} className={loading || error ? 'plan-results is-stale' : 'plan-results'}>
-      {plan && <PlanSummary plan={plan} source={source} selectedDate={date} />}
+      {plan && <PlanSummary plan={plan} source={source} selectedDate={date} onSeeLimits={onSeeLimits} />}
     </section>
   </>
 }
 
 export default function App() {
   const [backtestData] = useState(createBacktestData)
-  const [tabs, setTabs] = useState(() => ({ backtest: window.location.hash === '#backtest', visited: window.location.hash === '#backtest' }))
+  const [tabs, setTabs] = useState(() => {
+    const backtest = ['#backtest', '#limits'].includes(window.location.hash)
+    return { backtest, visited: backtest, limitsRequest: window.location.hash === '#limits' ? 1 : 0 }
+  })
   const tabButtons = useRef<(HTMLButtonElement | null)[]>([])
   const [days, setDays] = useState<ApiResult<DayInfo[]> | null>(null)
   const [selectedDate, setSelectedDate] = useState('')
@@ -96,14 +99,22 @@ export default function App() {
   const selectedDay = days?.ok ? days.data.find((day) => day.date === selectedDate) : undefined
 
   useEffect(() => {
-    const syncHash = () => setTabs((previous) => ({ backtest: window.location.hash === '#backtest', visited: previous.visited || window.location.hash === '#backtest' }))
+    const syncHash = () => setTabs((previous) => {
+      const backtest = ['#backtest', '#limits'].includes(window.location.hash)
+      return { backtest, visited: previous.visited || backtest, limitsRequest: window.location.hash === '#limits' ? previous.limitsRequest + 1 : 0 }
+    })
     window.addEventListener('hashchange', syncHash)
     return () => window.removeEventListener('hashchange', syncHash)
   }, [])
 
   function selectTab(backtest: boolean) {
-    setTabs((previous) => ({ backtest, visited: previous.visited || backtest }))
+    setTabs((previous) => ({ backtest, visited: previous.visited || backtest, limitsRequest: 0 }))
     window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${backtest ? '#backtest' : ''}`)
+  }
+
+  function seeLimits() {
+    setTabs((previous) => ({ backtest: true, visited: true, limitsRequest: previous.limitsRequest + 1 }))
+    window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#limits`)
   }
 
   useEffect(() => {
@@ -163,13 +174,13 @@ export default function App() {
           <section className="panel schedule-panel" aria-labelledby="schedule-title">
             <div className="panel-heading"><h2 id="schedule-title">Schedule dashboard</h2><span className="muted">Daily plan</span></div>
             <WeightSlider value={weight} onChange={setWeight} />
-            {selectedDate && <PlanPanel date={selectedDate} weight={weight} onPlan={setShownPlan} source={backtestData} />}
+            {selectedDate && <PlanPanel date={selectedDate} weight={weight} onPlan={setShownPlan} source={backtestData} onSeeLimits={seeLimits} />}
           </section>
           <ExplainerPanel date={selectedDate} weight={shownPlan?.weight ?? weight} />
         </div>
         </div>
         <div role="tabpanel" id="backtest-panel" aria-labelledby="backtest-tab" hidden={!tabs.backtest} tabIndex={0}>
-          {tabs.visited && <BacktestView source={backtestData} />}
+          {tabs.visited && <BacktestView source={backtestData} limitsRequest={tabs.backtest ? tabs.limitsRequest : 0} onSeeLimits={seeLimits} />}
         </div>
       </main>
       <footer>Energy Brain · Site time: Asia/Dhaka</footer>

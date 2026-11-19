@@ -3,9 +3,8 @@ import { baselines, useBacktestDays } from '../backtest/data'
 import type { BacktestData } from '../backtest/data'
 import { compareDailyCost, savingWords } from '../backtest/comparison'
 import { formatBdt, formatKg } from '../formatting'
-import BacktestCaveats from './BacktestCaveats'
 
-export default function SameDayComparison({ plan, source, selectedDate }: { plan: PlanResponse; source: BacktestData; selectedDate: string }) {
+export default function SameDayComparison({ plan, source, selectedDate, onSeeLimits }: { plan: PlanResponse; source: BacktestData; selectedDate: string; onSeeLimits: () => void }) {
   const outside = selectedDate < '2024-01-01' || selectedDate > '2024-12-31'
   const current = plan.date === selectedDate
   const supported = [0, 0.5, 1].includes(plan.weight)
@@ -40,6 +39,6 @@ export default function SameDayComparison({ plan, source, selectedDate }: { plan
                 </table>
                 <p className="muted">Adjusted figures price any battery end-of-day shortfall. These are historical settled values.</p>
               </>}
-    {result?.ok && !explanation && <BacktestCaveats caveats={result.data.caveats} />}
+    <button type="button" className="limits-link" onClick={onSeeLimits}>See limits of these numbers</button>
   </section>
 }

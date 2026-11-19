@@ -188,6 +188,22 @@ footer { padding: 1rem 0; font-size: .75rem; color: var(--muted); }
 .comparison-facts { padding-left: 1.2rem; margin-bottom: 0; }
 .comparison-facts li { margin-top: .6rem; }
 .backtest-caveats { margin-bottom: 0; font-size: .85rem; }
+.limits-count { margin: .35rem 0 0; }
+.limits-link { display: inline-block; min-height: 44px; max-width: 100%; padding: .55rem .2rem; border: 0; border-radius: .2rem; background: transparent; color: var(--accent); font: inherit; text-decoration: underline; text-underline-offset: .2em; text-align: left; overflow-wrap: anywhere; cursor: pointer; }
+.backtest-caution .limits-link { color: inherit; }
+.limits-link:hover { text-decoration-thickness: 2px; }
+.limits-link:focus-visible, .limits-group summary:focus-visible, .backtest-caveats h2:focus { outline: 3px solid var(--accent); outline-offset: 3px; }
+.backtest-caveats h2 { scroll-margin-top: 1rem; }
+.limits-group { min-width: 0; border-top: 1px solid var(--line); }
+.limits-group summary { display: flex; align-items: center; gap: .5rem; min-height: 44px; padding: .65rem .2rem; font-size: .85rem; font-weight: 600; line-height: 1.5; list-style: none; cursor: pointer; overflow-wrap: anywhere; }
+.limits-group summary::-webkit-details-marker { display: none; }
+.limits-group summary > span { min-width: 0; }
+.limits-group-count { margin-left: auto; flex-shrink: 0; font-weight: 400; }
+.limits-chevron { flex-shrink: 0; transition: transform 150ms ease; }
+.limits-group[open] .limits-chevron { transform: rotate(90deg); }
+.limits-group ul { margin: 0 0 1rem; padding-left: 1.5rem; }
+.limits-group li { padding-left: .2rem; margin-top: .6rem; line-height: 1.65; overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: reduce) { .limits-chevron { transition: none; } }
 .forecast-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: 1rem; margin-bottom: 1rem; }
 .forecast-metrics > div { min-width: 0; }
 .measurement summary { min-height: 44px; padding: .65rem 0; cursor: pointer; font-weight: 700; }
