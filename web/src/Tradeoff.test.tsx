@@ -4,7 +4,7 @@ import App from './App'
 import { days, planFixture } from './test/fixtures'
 import { paretoFixture } from './test/paretoFixture'
 import { backtestFixture, backtestDaysFixture } from './test/backtestFixture'
-import { findStable } from './test/stable'
+import { clickUntil } from './test/stable'
 afterEach(() => { window.history.replaceState(null, '', '/'); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 function setupApi(hash = '') {
   window.history.replaceState(null, '', `/${hash}`)
@@ -79,7 +79,10 @@ it('fetches changed days only while open, reuses cached days and applies the sel
   fireEvent.change(screen.getByRole('combobox', { name: 'Trade-off day' }), { target: { value: '2024-07-01' } })
   await waitFor(() => expect(paretoCalls()).toHaveLength(2))
   await waitFor(() => expect(screen.getByRole('region', { name: 'Trade-off results' })).not.toHaveClass('is-stale'))
-  fireEvent.click(await findStable(() => screen.getByRole('button', { name: /Inspect w 0.4 - 1/ })))
+  await clickUntil(
+    () => screen.getByRole('button', { name: /Inspect w 0.4 - 1/ }),
+    () => expect(screen.getByRole('button', { name: 'Use this setting' })).toBeInTheDocument(),
+  )
   fireEvent.click(await screen.findByRole('button', { name: 'Use this setting' }))
   await waitFor(() => expect(screen.getByRole('tab', { name: "Today's plan" })).toHaveAttribute('aria-selected', 'true'))
   await waitFor(() => expect(screen.getByRole('slider')).toHaveValue('0.4'))

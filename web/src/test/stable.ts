@@ -1,4 +1,4 @@
-import { act, waitFor } from '@testing-library/react'
+import { act, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 /**
@@ -43,4 +43,19 @@ export async function focusAndPress(
       if (attempt === attempts) throw error
     }
   }
+}
+
+/**
+ * Clicks an element, finding it again on every attempt, until the expected result shows up. A click on a chart dot
+ * can be lost when the chart is re-created at that moment (slower machines). Only for clicks that are safe to
+ * repeat (for example "select this plan"), so a retry cannot change the outcome.
+ */
+export async function clickUntil(find: () => Element, expectation: () => void, timeout = 8000): Promise<void> {
+  await waitFor(
+    () => {
+      fireEvent.click(find())
+      expectation()
+    },
+    { timeout, interval: 60 },
+  )
 }
