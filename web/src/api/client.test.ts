@@ -45,7 +45,46 @@ describe('API client', () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')))
     const result = await api.days()
     expect(result).toMatchObject({ ok: false, error: { kind: 'network' } })
-    if (!result.ok) expect(result.error.message).toContain('uvicorn energy_brain.api.app:app --reload --port 8000')
+    if (!result.ok && result.error.kind === 'network') expect(result.error.message).toContain('uvicorn energy_brain.api.app:app --reload --port 8000')
+  })
+
+  it('passes a signal to fetch and returns cancellation separately from network failure', async () => {
+    const controller = new AbortController()
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) => new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError')))
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+    const pending = api.plan({ date: '2024-07-02', w: 0.3 }, controller.signal)
+    controller.abort()
+    expect(await pending).toEqual({ ok: false, error: { kind: 'aborted' } })
+  })
+
+  it('recognises AbortError without a supplied signal', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new DOMException('Cancelled', 'AbortError')))
+    expect(await api.days()).toEqual({ ok: false, error: { kind: 'aborted' } })
+  })
+
+  it('recognises cancellation while reading the response body', async () => {
+    const controller = new AbortController()
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200,
+      json: async () => {
+        controller.abort('Superseded')
+        throw new DOMException('Cancelled', 'AbortError')
+      },
+    }))
+    expect(await api.plan({ date: '2024-07-02', w: 0 }, controller.signal))
+      .toEqual({ ok: false, error: { kind: 'aborted' } })
+  })
+
+  it('forwards optional signals on all endpoints', async () => {
+    const fetchMock = respond({})
+    const { signal } = new AbortController()
+    await api.days(signal)
+    await api.backtest({ include_sha: true }, signal)
+    await api.backtestDays({ weight: 0 }, signal)
+    await api.explain({ date: '2024-07-02', w: 0, question: 'Why?' }, signal)
+    await api.health(signal)
+    expect(fetchMock.mock.calls.every(([, init]) => init.signal === signal)).toBe(true)
   })
 
   it('returns a typed error for non-JSON responses', async () => {

@@ -6,6 +6,7 @@ export type DayInfo = Schemas['DayInfo']
 type ValidationDetail = Schemas['ValidationError']
 
 export type ApiError =
+  | { kind: 'aborted' }
   | { kind: 'validation'; status: number; message: string; details: ValidationDetail[] }
   | ({ kind: 'api'; status: number } & Schemas['ErrorDetail'])
   | { kind: 'network'; message: string }
@@ -43,10 +44,11 @@ function mapError(status: number, body: unknown): ApiError {
 export function createApiClient(baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000') {
   const base = baseUrl.replace(/\/+$/, '')
 
-  async function request<T>(path: string, method: 'GET' | 'POST', body?: unknown): Promise<ApiResult<T>> {
+  async function request<T>(path: string, method: 'GET' | 'POST', body?: unknown, signal?: AbortSignal): Promise<ApiResult<T>> {
+    const aborted = (error: unknown) => signal?.aborted || (isRecord(error) && error.name === 'AbortError')
     try {
       const response = await fetch(`${base}${path}`, {
-        method,
+        method, signal,
         ...(body === undefined ? {} : {
           headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
         }),
@@ -54,7 +56,8 @@ export function createApiClient(baseUrl = import.meta.env.VITE_API_BASE_URL || '
       let data: unknown
       try {
         data = await response.json()
-      } catch {
+      } catch (error) {
+        if (aborted(error)) return { ok: false, error: { kind: 'aborted' } }
         return { ok: false, error: response.ok
           ? { kind: 'response', status: response.status, message: 'API returned an invalid JSON response.' }
           : mapError(response.status, null) }
@@ -62,7 +65,8 @@ export function createApiClient(baseUrl = import.meta.env.VITE_API_BASE_URL || '
       if (!response.ok) return { ok: false, error: mapError(response.status, data) }
       // Response types come from the committed OpenAPI contract; no totals are changed here.
       return { ok: true, data: data as T }
-    } catch {
+    } catch (error) {
+      if (aborted(error)) return { ok: false, error: { kind: 'aborted' } }
       return { ok: false, error: {
         kind: 'network',
         message: 'API unreachable. Start the backend with "uvicorn energy_brain.api.app:app --reload --port 8000". Check VITE_API_BASE_URL and the connection.',
@@ -71,16 +75,16 @@ export function createApiClient(baseUrl = import.meta.env.VITE_API_BASE_URL || '
   }
 
   return {
-    days: () => request<Schemas['DaysResponse']>('/days', 'GET'),
-    plan: (body: Schemas['PlanRequest']) => request<PlanResponse>('/plan', 'POST', body),
-    backtest: (query?: operations['backtest_backtest_get']['parameters']['query']) =>
+    days: (signal?: AbortSignal) => request<Schemas['DaysResponse']>('/days', 'GET', undefined, signal),
+    plan: (body: Schemas['PlanRequest'], signal?: AbortSignal) => request<PlanResponse>('/plan', 'POST', body, signal),
+    backtest: (query?: operations['backtest_backtest_get']['parameters']['query'], signal?: AbortSignal) =>
       request<Schemas['BacktestSummary']>(query?.include_sha === undefined
-        ? '/backtest' : `/backtest?include_sha=${query.include_sha}`, 'GET'),
-    backtestDays: (query?: operations['backtest_days_backtest_days_get']['parameters']['query']) =>
+        ? '/backtest' : `/backtest?include_sha=${query.include_sha}`, 'GET', undefined, signal),
+    backtestDays: (query?: operations['backtest_days_backtest_days_get']['parameters']['query'], signal?: AbortSignal) =>
       request<Schemas['BacktestDaysResponse']>(query?.weight == null
-        ? '/backtest/days' : `/backtest/days?weight=${query.weight}`, 'GET'),
-    explain: (body: Schemas['ExplainRequest']) => request<Schemas['ExplainResponse']>('/explain', 'POST', body),
-    health: () => request<Schemas['HealthResponse']>('/health', 'GET'),
+        ? '/backtest/days' : `/backtest/days?weight=${query.weight}`, 'GET', undefined, signal),
+    explain: (body: Schemas['ExplainRequest'], signal?: AbortSignal) => request<Schemas['ExplainResponse']>('/explain', 'POST', body, signal),
+    health: (signal?: AbortSignal) => request<Schemas['HealthResponse']>('/health', 'GET', undefined, signal),
   }
 }
 
