@@ -70,6 +70,15 @@ def test_bangladesh_holiday_detection():
     eid_day = pd.Timestamp("2024-04-11").date()
     assert is_bangladesh_holiday(eid_day) is True
 
-    # Normal working day (e.g. Wednesday 2024-05-15)
+    # 2025 Eid dates
+    assert is_bangladesh_holiday(pd.Timestamp("2025-04-01").date()) is True  # Eid-ul-Fitr
+    assert is_bangladesh_holiday(pd.Timestamp("2025-06-07").date()) is True  # Eid-ul-Adha
+
+    # 2026 Eid dates
+    assert is_bangladesh_holiday(pd.Timestamp("2026-03-21").date()) is True  # Eid-ul-Fitr
+    assert is_bangladesh_holiday(pd.Timestamp("2026-05-28").date()) is True  # Eid-ul-Adha
+
+    # Normal working day (e.g. Wednesday 2024-05-15, Tuesday 2026-11-17)
     normal_day = pd.Timestamp("2024-05-15").date()
     assert is_bangladesh_holiday(normal_day) is False
+    assert is_bangladesh_holiday(pd.Timestamp("2026-11-17").date()) is False
