@@ -24,5 +24,24 @@
       2022,
       2023
     ]
+  },
+  "solar_lstm_comparison": {
+    "model": "LSTM (PyTorch)",
+    "architecture": "2-layer LSTM (hidden_dim=48, seq_len=8 slots)",
+    "train_years": [
+      2022,
+      2023
+    ],
+    "test_year": 2024,
+    "lstm_p50_mae_kw": 12.728,
+    "lstm_p50_rmse_kw": 35.934,
+    "lstm_p10_p90_coverage_pct": 78.9,
+    "lightgbm_p50_mae_kw": 1.919,
+    "lightgbm_p50_rmse_kw": 4.748,
+    "persistence_mae_kw": 20.29,
+    "persistence_rmse_kw": 46.117,
+    "mae_improvement_over_persistence_pct": 37.27,
+    "better_model": "LightGBM",
+    "recommendation": "Retain LightGBM for production ForecastAgent due to significantly lower MAE (1.92 kW vs 12.73 kW) and sub-millisecond CPU inference without PyTorch runtime overhead."
   }
 }
