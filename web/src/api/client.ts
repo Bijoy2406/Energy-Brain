@@ -41,7 +41,9 @@ function mapError(status: number, body: unknown): ApiError {
   return { kind: 'http', status, message: `API returned HTTP ${status}.` }
 }
 
-export function createApiClient(baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000') {
+export function createApiClient(
+  baseUrl = import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? '' : 'http://localhost:8000'),
+) {
   const base = baseUrl.replace(/\/+$/, '')
 
   async function request<T>(path: string, method: 'GET' | 'POST', body?: unknown, signal?: AbortSignal): Promise<ApiResult<T>> {
@@ -69,7 +71,9 @@ export function createApiClient(baseUrl = import.meta.env.VITE_API_BASE_URL || '
       if (aborted(error)) return { ok: false, error: { kind: 'aborted' } }
       return { ok: false, error: {
         kind: 'network',
-        message: 'API unreachable. Start the backend with "uvicorn energy_brain.api.app:app --reload --port 8000". Check VITE_API_BASE_URL and the connection.',
+        message: import.meta.env.PROD
+          ? 'API unreachable. Check your connection and the server /health page. If the Space is sleeping, open its Hugging Face page and wait for it to wake, then retry. A separate API needs VITE_API_BASE_URL set before building.'
+          : 'API unreachable. Start the backend with "uvicorn energy_brain.api.app:app --reload --port 8000". Check VITE_API_BASE_URL and the connection.',
       } }
     }
   }

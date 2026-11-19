@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createApiClient } from './client'
 
 function respond(body: unknown, status = 200) {
@@ -11,7 +11,38 @@ function respond(body: unknown, status = 200) {
 
 const api = createApiClient('http://api.test/')
 
+afterEach(() => vi.unstubAllEnvs())
+
 describe('API client', () => {
+  it.each([true, false])('defaults to the correct origin with PROD=%s', async (production) => {
+    vi.stubEnv('PROD', production)
+    vi.stubEnv('VITE_API_BASE_URL', '')
+    const fetchMock = respond({})
+    await createApiClient().days()
+    expect(fetchMock).toHaveBeenCalledWith(production ? '/days' : 'http://localhost:8000/days', expect.anything())
+  })
+
+  it.each([true, false])('respects a configured API URL with PROD=%s', async (production) => {
+    vi.stubEnv('PROD', production)
+    vi.stubEnv('VITE_API_BASE_URL', 'https://api.example/')
+    const fetchMock = respond({})
+    await createApiClient().health()
+    expect(fetchMock).toHaveBeenCalledWith('https://api.example/health', expect.anything())
+  })
+
+  it('gives useful hosted API connection advice', async () => {
+    vi.stubEnv('PROD', true)
+    vi.stubEnv('VITE_API_BASE_URL', '')
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')))
+    const result = await createApiClient().days()
+    expect(result).toMatchObject({ ok: false, error: { kind: 'network' } })
+    if (!result.ok && result.error.kind === 'network') {
+      expect(result.error.message).toContain('Space')
+      expect(result.error.message).toContain('/health')
+      expect(result.error.message).toContain('VITE_API_BASE_URL')
+    }
+  })
+
   it('returns successful data unchanged and normalises the base URL', async () => {
     const body = { first_day: '2022-01-01', last_day: '2024-07-02', days: [] }
     const fetchMock = respond(body)

@@ -31,7 +31,8 @@ npm run dev
 Open http://localhost:5173. Vite uses port 5173 and fails if it is occupied, keeping the backend's default CORS
 origins consistent. Both `localhost:5173` and `127.0.0.1:5173` are allowed by the API.
 
-`VITE_API_BASE_URL` defaults to `http://localhost:8000`. To use another backend, set it before starting Vite:
+With `VITE_API_BASE_URL` unset or empty, development uses `http://localhost:8000` and production builds use
+the website's own origin (relative requests such as `/days`). To use another backend, set it before starting Vite:
 
 ```bash
 VITE_API_BASE_URL=http://localhost:8000 npm run dev
@@ -77,8 +78,23 @@ if (result.ok) {
 Errors distinguish FastAPI validation lists (`validation`, preserving field locations), structured backend
 errors (`api`, preserving `code`, HTTP status and `retry_after_s`, including `/explain` HTTP 429), network
 failures (`network`), unrecognised HTTP errors (`http`) and invalid JSON on successful responses (`response`).
-The client does not automatically retry rate-limited requests. Network failures show the backend startup command.
+The client does not automatically retry rate-limited requests. Network failures show the backend startup command
+in development; production advises checking `/health`, waking a sleeping Space, and checking build-time API settings.
 
 A successful HTTP response can contain an unsafe plan. Always check `safe` and show its `banners`,
 `forecast_fallback` and `signal_fallback`. Unsafe plans are diagnostic only and must not be presented as
 executable. Totals are displayed directly from the API without rounding or frontend accounting.
+
+## Production with the API
+
+Build with `npm ci && npm run build` and no `VITE_API_BASE_URL` override. From the repository root run:
+
+```bash
+EB_STATIC_DIR=web/dist EB_WARMUP=0 uvicorn energy_brain.api.app:app --port 8010
+```
+
+Open http://localhost:8010. This serves the built site and API together; `npm run preview` serves only the
+frontend, so it needs an explicit separate API URL at build time and a matching backend CORS origin.
+Local `.env.local` or `.env.production.local` settings can override the default when building locally.
+The Docker context excludes these files and builds the site with relative requests.
+For Hugging Face Spaces packaging and deployment, follow [docs/deploy.md](../docs/deploy.md).
