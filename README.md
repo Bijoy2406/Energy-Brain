@@ -118,6 +118,10 @@ The Vite + React + TypeScript frontend lives in `web/`. See
 [Run frontend and backend together](web/README.md#run-frontend-and-backend-together) for setup,
 API type generation, tests and builds. The backend runs on port 8000 and the frontend on port 5173.
 
+## Deploy
+
+Prepare and publish a Hugging Face Docker Space with the [deployment guide](docs/deploy.md).
+
 ## Using the site config
 
 ```python
