@@ -27,6 +27,13 @@ uses its fallback tiers (the committed one-week `data/sample`), the Signal agent
 memory, and every plan says so in `banners` and `forecast_fallback`. Real numbers need the 2022–2024 data and the
 trained models (`docs/data-sources.md`).
 
+## Optional built website
+
+Set `EB_STATIC_DIR` to a directory containing `index.html` (for example `web/dist`) before creating the app
+to serve the website at `/`, after all API routes. Unset or invalid directories leave API-only behavior unchanged.
+Unknown non-API paths return `index.html` only for GET requests accepting `text/html`; API namespaces stay
+reserved, and the OpenAPI schema is unchanged. See [deployment](deploy.md) for the single-container setup.
+
 ## Endpoints
 
 | Method | Path | Body / query | Returns |

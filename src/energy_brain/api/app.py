@@ -26,6 +26,7 @@ from energy_brain import __version__
 from energy_brain.api.routers import ROUTERS
 from energy_brain.api.service import PlanService
 from energy_brain.api.settings import ApiSettings
+from energy_brain.api.static import mount_website
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,7 @@ def create_app(service: PlanService | None = None, settings: ApiSettings | None 
 
     for router in ROUTERS:
         app.include_router(router)
+    mount_website(app)
     return app
 
 
