@@ -27,7 +27,13 @@ from energy_brain.api.models import (
     PlanResponse,
     last_plan_day,
 )
-from energy_brain.api.service import PlanService, RateLimited, RateLimiter, default_agent_factory
+from energy_brain.api.service import (
+    PARETO_WEIGHTS,
+    PlanService,
+    RateLimited,
+    RateLimiter,
+    default_agent_factory,
+)
 from energy_brain.api.settings import ApiSettings
 from energy_brain.explainer import ExplainerAgent, FakeLLMClient, LLMError, LLMResponse, ToolCall
 from energy_brain.planner import UNSAFE_PREFIX
@@ -714,6 +720,7 @@ def test_warmup_plans_demo_days_in_the_background(dirs):
         service._warmup_thread.join(120)
         h = HealthResponse.model_validate(service.health().model_dump())
     assert h.warmup.state == "done" and h.warmup.total == 3 and h.warmup.planned == 3 and h.warmup.errors == 0
-    assert h.cache.size == 3
+    # the plans of the warm-up weights plus the Pareto grid of each demo day, which share cache entries
+    assert h.cache.size == 3 * len(set(PARETO_WEIGHTS) | {0.5})
     keys = service.warmup_keys()
     assert keys[0] == (date.fromisoformat(DEMO_DAY), 0.5) and keys[-1][0] == last_plan_day()

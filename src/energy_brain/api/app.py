@@ -23,7 +23,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
 from energy_brain import __version__
-from energy_brain.api.routers import ROUTERS
+from energy_brain.api.routers import ROUTERS, pareto
 from energy_brain.api.service import PlanService
 from energy_brain.api.settings import ApiSettings
 from energy_brain.api.static import mount_website
@@ -87,6 +87,7 @@ def create_app(service: PlanService | None = None, settings: ApiSettings | None 
 
     for router in ROUTERS:
         app.include_router(router)
+    app.include_router(pareto.router)
     mount_website(app)
     return app
 

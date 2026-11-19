@@ -185,6 +185,45 @@ class PlanResponse(_Model):
     computed_at: datetime = Field(description="when this plan was solved (site time)")
 
 
+# ---------------------------------------------------------------------------------------------- /pareto
+
+
+class ParetoPoint(_Model):
+    weight: float
+    cost_bdt: float
+    co2_kg: float
+    generator_hours: float
+    diesel_litres: float
+    status: str
+    safe: bool
+    risk_ok: bool
+    replans: int
+    efficient: bool
+    group: int
+    same_as_weight: float | None
+    plan_cached: bool = Field(description="plan cache hit when this Pareto body was computed")
+
+
+class ParetoResponse(_Model):
+    date: Date
+    weights_meaning: Literal["1 = cheapest, 0 = cleanest"] = "1 = cheapest, 0 = cleanest"
+    basis: Literal["planned totals at the P50 forecast, before settlement against actuals"] = (
+        "planned totals at the P50 forecast, before settlement against actuals"
+    )
+    points: list[ParetoPoint]
+    frontier: list[ParetoPoint] = Field(
+        description="lowest-weight representative of each efficient group, sorted by cost ascending"
+    )
+    forecast_fallback: FallbackInfo
+    signal_fallback: FallbackInfo
+    banners: list[str]
+    forecast_source: str
+    cached: bool
+    computed_at: datetime
+    solve_seconds: float = Field(description="total wall time of this request, including cache waits")
+    distinct_points: int = Field(description="distinct cost/CO2 groups among safe plans")
+
+
 # ---------------------------------------------------------------------------------------------- /backtest
 
 
