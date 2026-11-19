@@ -6,7 +6,8 @@ Synthetic load, simulated PV, synthetic outages. Historical replay.
 
 Docker is not installed on the preparation machine. **The Docker image could not be tested locally.**
 The application, frontend, packaging script and workflow YAML can be checked without Docker; the Space build
-is still required to validate the image, dependency installation, weather download and model training together.
+is still required to validate the image, dependency installation and application together. Weather download
+and training during a fallback build also need validation there.
 
 ## 1. Create the Space and a write token
 
@@ -25,7 +26,8 @@ The Hugging Face token is for uploading code. The Groq key below is a different 
 
 ## 2. Export the working tree
 
-You need Git and Bash (Linux/macOS, WSL or Git Bash on Windows). From the Energy Brain repository root:
+You need Git, Bash and the `sha256sum`, `wc` and `awk` utilities (Linux/WSL or Git Bash on Windows;
+on macOS install GNU coreutils for `sha256sum`). From the Energy Brain repository root:
 
 ```bash
 bash scripts/make_hf_space.sh
@@ -33,13 +35,59 @@ bash scripts/make_hf_space.sh
 
 The script creates `build/hf-space/` and prints its size and upload commands. It copies current working-tree
 contents, including these uncommitted deployment changes. It does not stage, commit or push anything.
-The destination must not already exist; use a new path as the first argument if needed.
+The destination must not already exist; supply a new path if needed.
 
 The export includes only Docker inputs: `Dockerfile`, `.dockerignore`, `pyproject.toml`, `src/`, `config/`,
 `prompts/`, the three runtime JSON reports, `web/` source, and `LICENSE` if present. It replaces the project's
 README with [the Space card](../deploy/hf-space/README.md), whose YAML front matter selects Docker and port 7860.
 That README is also required by Python package metadata. Symlinks and forbidden input paths are rejected;
-local environment files, processed data and trained models are never exported.
+local environment files and raw downloads are never exported.
+
+By default, the Space also ships these **exact local files**, copied under `deploy/artifacts/`:
+
+- `data/processed/weather.parquet`, `data/processed/pv.parquet`, `data/processed/load.parquet`
+- `models/solar_p10.txt`, `models/solar_p50.txt`, `models/solar_p90.txt`
+- `models/load_p10.txt`, `models/load_p50.txt`, `models/load_p90.txt`
+
+Only these nine artifacts are allowlisted; no other files from `data/` or `models/` are copied. The script
+prints each file's byte size and their total MB, and writes `deploy/artifacts/MANIFEST.sha256` with paths
+relative to that directory. The artifacts stay git-ignored in the main repository and are uploaded only
+to the separate Space repository. `deploy/artifacts/README.md` is a placeholder kept in the main repository.
+
+Shipping the local data and trained models avoids a fresh weather download or retraining that could change
+the plan and make the verified stored demo answers stop matching. If any artifact is missing, the script
+stops before creating the destination and prints the local build commands. Build the data as documented
+in [data sources](data-sources.md), then train both models:
+
+```bash
+python -m energy_brain.data.download_weather
+python -m energy_brain.data.simulate_pv
+python -m energy_brain.data.synthetic_load
+python -m energy_brain.forecast.solar --train
+python -m energy_brain.forecast.load --train
+```
+
+After **any retrain or data change**, also regenerate the committed reports before building the Space:
+
+```bash
+python -m energy_brain.evaluator
+python -m energy_brain.api record-demo-answers
+```
+
+These refresh `reports/backtest.json` and `reports/explainer_demo_answers.json`; training refreshes
+`reports/forecast_metrics.json`. Recording demo answers needs live LLM access and verification as described
+in the [API guide](api.md). Review and commit the refreshed reports in the main repository as part of that
+data/model update, then rerun the export script so it copies the matching reports and artifacts together.
+
+To use the original build-time generation instead, explicitly request the fallback:
+
+```bash
+bash scripts/make_hf_space.sh --regenerate ./build/hf-space-regenerate
+```
+
+This ships no data, models or manifest, just the artifact placeholder README. Docker then downloads weather
+and retrains. A changed download or library version can produce a different plan, so stored demo answers
+may stop matching and the five demo questions may make slow live calls. Prefer the default artifact export.
 
 ## 3. Configure runtime settings
 
@@ -86,7 +134,13 @@ branch, skip the fetch/reset pair on the first upload.
 
 Open the Space's **App → Logs** and select the build log. Each push rebuilds the app. The image first runs
 `npm ci` and the production frontend build, then installs the Python package without dev dependencies.
-The build runs these existing pipelines in order, with numbered log messages:
+For a default export, the build checks `deploy/artifacts/MANIFEST.sha256` with `sha256sum -c`. A checksum
+mismatch fails the build; it does not fall back to training. The verified files move to `/app/data/processed/`
+and `/app/models/`, owned by the uid 1000 app user. Look for **Using shipped data and models (verified)**:
+this branch skips the data pipeline and training.
+
+When the manifest is absent (`--regenerate`, or a direct build from the main repository), the log says
+**Regenerating data and models** and runs these existing pipelines in order, with numbered log messages:
 
 ```bash
 python -m energy_brain.data.download_weather
@@ -101,7 +155,8 @@ They create 2022–2024 weather/PV/load data, samples, and six quantile models i
 needs public network access to Open-Meteo and NASA POWER. Raw downloads are removed after training. The API
 generates outages in memory, so the outage CLI is intentionally skipped. The copied backtest and stored demo
 answer reports remain the recorded results; the training CLIs update forecast metrics inside the image only.
-No generated data or models are committed to either repository. `docs/openapi.json` is unnecessary at runtime:
+The default export commits the nine artifacts only to the separate Space repository; they remain ignored
+in the main repository. `docs/openapi.json` is unnecessary at runtime:
 FastAPI generates the schema, and frontend types are already committed.
 
 Wait for **Running** and let warmup finish. Open the public Space link in an incognito/private window, without
@@ -120,8 +175,10 @@ the actual URL shown by Hugging Face. Verify:
 
 Stored answers are accepted only when their recorded tool results match the current plan exactly. A new
 weather download, dependency version or model training result can change the plan. If the five questions
-are answered live instead, inspect the logs and data/model versions; do not label live answers as stored.
-Re-recording answers is a separate task requiring a verified plan and live LLM access (see [API guide](api.md)).
+are answered live instead, check the build branch, data/model versions and whether the reports were refreshed
+with those artifacts. Shipping exact files removes download/retraining drift; dependency differences at
+runtime can still affect the plan. Do not label live answers as stored. Re-recording answers requires a
+verified plan and live LLM access (see [API guide](api.md)).
 
 After these checks, use the verified public URL for the portal and the demo-link placeholder in Section 5 of
 `docs/submission/prelim.md`. That submission file is not modified by this preparation.
@@ -135,7 +192,9 @@ A sleeping Space does not provide an always-on service; see [Space lifecycle](ht
 
 ## 7. Redeploy after changes
 
-Return to the Energy Brain root and export into a fresh directory:
+Return to the Energy Brain root. After a retrain or data change, regenerate and review the reports using
+the two commands in Step 2 first. Rerun the script into a fresh directory to refresh the shipped files;
+the old Space export does not update automatically:
 
 ```bash
 bash scripts/make_hf_space.sh ./build/hf-space-update
@@ -157,11 +216,13 @@ change, frontend rebuild or key in a Git commit is needed.
 
 | Symptom | Check or action |
 | --- | --- |
-| Weather download fails during build | Read the `[1/5]` error for the failing provider. Check Open-Meteo/NASA availability and retry with the Space's Factory reboot/rebuild control after a transient outage. Both providers must work in the current downloader; no key is required. |
+| Export reports a missing local artifact | Run the three data commands and both training commands in Step 2, then refresh the backtest and demo-answer reports before exporting again. Use `--regenerate` only if accepting the risk that stored answers stop matching. |
+| SHA-256 verification fails during build | The shipped files differ from their manifest. Rerun the export from the intended local data/models and push the fresh export. Do not bypass verification; a mismatch must fail the build. |
+| Weather download fails during build | This occurs in the regeneration fallback. Prefer exporting the local artifacts. Otherwise read the `[1/5]` error for the failing provider and retry with the Space's Factory reboot/rebuild control after a transient outage. Both Open-Meteo and NASA must work in the current downloader; no key is required. |
 | Out of memory | Find whether npm, training, or runtime failed in the logs. Try `EB_WARMUP=0` for runtime startup pressure. If necessary choose hardware with more RAM, checking its price first. Do not remove model training and present fallback output as the full demo. |
 | Groq 429 or API rate limit | Wait for the indicated retry interval and stop repeated requests. Keep `EB_EXPLAIN_CACHE=prefer`, day 2024-07-02 and weight 0.5 for the stored questions. Custom questions still use the live quota. |
 | Blank page or API unreachable | Open the direct app URL; check `/health`, runtime logs and browser network errors. A failed `/assets/*.js` request suggests an incomplete frontend build or wrong static directory. Confirm `EB_STATIC_DIR=/app/web-dist`, port 7860, and that no build-time `VITE_API_BASE_URL` points at localhost. After redeploy, refresh the page to load the new asset names. |
-| No Stored answer badge | Check the exact day, weight and suggested question, and the current plan against the recorded demo results. Cached answers are deliberately rejected if their numbers no longer match. |
+| No Stored answer badge | Check the exact day, weight and suggested question. Confirm the build logged `Using shipped data and models (verified)` and the reports were regenerated after the last data change or retrain, then re-export and push. Cached answers are deliberately rejected if their numbers no longer match; `--regenerate` can cause this drift. |
 
 When Docker is available elsewhere, an optional image check from the exported folder is:
 

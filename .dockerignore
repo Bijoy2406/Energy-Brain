@@ -24,7 +24,9 @@ notebooks
 **/*.md
 !README.md
 !prompts/*.md
-deploy
+deploy/*
+!deploy/artifacts/
+!deploy/artifacts/**
 scripts
 docs
 reports/*
