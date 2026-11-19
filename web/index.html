@@ -1,9 +1,23 @@
 <!doctype html>
 <html lang="en" class="splash-active">
   <head>
+    <meta name="theme-color" content="#F4F7FB" />
+    <script>
+      window.__splashStart = performance.now()
+      // Resolve the theme before styles or the app can paint; storage may be unavailable.
+      var theme
+      try { theme = localStorage.getItem('eb-theme') } catch (error) {}
+      if (theme !== 'light' && theme !== 'dark') theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+      document.documentElement.dataset.theme = theme
+      document.documentElement.style.colorScheme = theme
+      document.querySelector('meta[name="theme-color"]').content = theme === 'dark' ? '#07111F' : '#F4F7FB' 
+      // Show the intro splash once per browser tab: sessionStorage survives reloads but is cleared when the tab closes.
+      try {
+        if (sessionStorage.getItem('eb-splash-seen')) document.documentElement.classList.replace('splash-active', 'splash-skip')
+      } catch (error) {}
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0B2545" />
     <title>Energy Brain · Dhaka Microgrid Console</title>
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
@@ -19,6 +33,7 @@
   <body>
     <style>
       html.splash-active, html.splash-active body { overflow: hidden; }
+      html.splash-skip #splash { display: none; }
       #splash {
         position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center;
         background: radial-gradient(circle at 50% 45%, #14345f 0%, #0b2545 45%, #061527 100%);
@@ -38,7 +53,7 @@
       #splash .splash-word span:nth-child(2) { animation-delay: .85s; color: #f5a623; }
       #splash .splash-bar { width: min(220px, 60vw); height: 3px; border-radius: 3px; background: rgba(255,255,255,.12); overflow: hidden; }
       #splash .splash-bar i { display: block; height: 100%; width: 40%; border-radius: 3px; background: linear-gradient(90deg, #f5a623, #14a38b); animation: splash-load 1.2s ease-in-out infinite; }
-      #splash .splash-tag { margin: 0; font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: #9fb3cf; opacity: 0; animation: splash-rise .6s ease 1.05s forwards; }
+      #splash .splash-tag { margin: 0; font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: #9fb3cf; opacity: 0; animation: splash-rise .5s ease .6s forwards; }
       #splash.splash-out { opacity: 0; visibility: hidden; }
       #splash.splash-out .splash-stage { transform: scale(6); filter: blur(6px); }
       @keyframes splash-pop { from { transform: scale(.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
