@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import App from './App'
 import { days, planFixture } from './test/fixtures'
 import { backtestDaysFixture, backtestFixture, baselineNames, caveats } from './test/backtestFixture'
-import { findStable } from './test/stable'
+import { focusAndPress } from './test/stable'
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
 function mockApi(report: () => Promise<Response> = async () => json(backtestFixture()), initialPlan = planFixture(), daily: (weight: number) => Promise<Response> = async (weight) => json(backtestDaysFixture(weight))) {
@@ -162,11 +162,12 @@ it('rounds daily costs and CO2 in the same-day table and chart tooltip without c
   expect(within(sameDay).getByRole('button', { name: 'See limits of these numbers' })).toBeInTheDocument()
   for (const caveat of caveats) expect(within(sameDay).queryByText(caveat)).not.toBeInTheDocument()
   await openBacktest()
-  const chart = await findStable(() => screen.getByRole('application', { name: /Daily cost saved in BDT/ }))
-  act(() => chart.focus())
-  await userEvent.keyboard('{ArrowRight}')
+  await focusAndPress(
+    () => screen.getByRole('application', { name: /Daily cost saved in BDT/ }),
+    '{ArrowRight}',
+    () => expect(within(screen.getByRole('region', { name: 'Daily cost comparison' })).getByText('2024-07-02 · Tue')).toBeInTheDocument(),
+  )
   const region = screen.getByRole('region', { name: 'Daily cost comparison' })
-  expect(await within(region).findByText('2024-07-02 · Tue')).toBeInTheDocument()
   expect(region).toHaveTextContent('169,146 BDT')
   expect(region).toHaveTextContent('153,158 BDT')
   expect(region).toHaveTextContent('15,988 BDT less')
@@ -247,11 +248,12 @@ it('renders the daily bar chart and switches its named baseline; keyboard toolti
   mockApi()
   render(<App />)
   await openBacktest()
-  const chart = await findStable(() => screen.getByRole('application', { name: /Daily cost saved in BDT/ }))
-  act(() => chart.focus())
-  await userEvent.keyboard('{ArrowRight}')
+  await focusAndPress(
+    () => screen.getByRole('application', { name: /Daily cost saved in BDT/ }),
+    '{ArrowRight}',
+    () => expect(within(screen.getByRole('region', { name: 'Daily cost comparison' })).getByText('2024-07-02 · Tue')).toBeInTheDocument(),
+  )
   const region = screen.getByRole('region', { name: 'Daily cost comparison' })
-  expect(await within(region).findByText('2024-07-02 · Tue')).toBeInTheDocument()
   expect(region).toHaveTextContent('100 BDT')
   expect(region).toHaveTextContent('80 BDT')
   expect(region).toHaveTextContent('20 BDT less')
