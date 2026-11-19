@@ -34,3 +34,6 @@ Thumbs.db
 .venv-linux/
 .statamcp/
 build/
+
+# Vite dependency cache
+web/.vite/

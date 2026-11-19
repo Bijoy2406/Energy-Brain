@@ -21,6 +21,18 @@ function mockApi(plan = planFixture(), dayList = days) {
 }
 
 describe('schedule dashboard', () => {
+  it('gives the schedule its own workspace and renders the floating chat outside the tab layout', async () => {
+    mockApi()
+    const { container } = render(<App />)
+    await screen.findByText('152,703')
+    const workspace = container.querySelector('.workspace')!
+    expect(workspace.children).toHaveLength(1)
+    expect(within(workspace as HTMLElement).getByRole('region', { name: 'Schedule dashboard' })).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: 'Open plan explainer' }))
+    expect(screen.getByRole('dialog').closest('[role="tabpanel"]')).toBeNull()
+    expect(screen.getByRole('dialog').parentElement).toBe(document.body)
+  })
+
   it('loads labelled days, selects the demo day and requests its plan at w=0.5', async () => {
     const fetchMock = mockApi()
     render(<App />)
@@ -184,7 +196,10 @@ describe('schedule dashboard', () => {
     render(<App />)
     await screen.findByText('152,703')
     let resolveNext!: (response: Response) => void
-    fetchMock.mockImplementation(() => new Promise<Response>((resolve) => { resolveNext = resolve }))
+    const originalHandler = fetchMock.getMockImplementation()!
+    fetchMock.mockImplementation((url: string) => url.endsWith('/plan')
+      ? new Promise<Response>((resolve) => { resolveNext = resolve })
+      : originalHandler(url))
     await user.selectOptions(screen.getByRole('combobox'), '2024-07-01')
     expect(screen.getByText('152,703')).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Plan results' })).toHaveAttribute('aria-busy', 'true')
@@ -354,7 +369,7 @@ describe('cost and carbon control', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
-  it('eases reported totals up and down and ends at the exact API formatting', async () => {
+  it('keeps exact API formatting immediately available while totals are enhanced', async () => {
     const initial = planFixture()
     Object.assign(initial.plan.totals, { cost_bdt: 100.125, co2_kg: 20.875, generator_hours: 2.2 })
     const fetchMock = mockApi(initial)
@@ -365,16 +380,6 @@ describe('cost and carbon control', () => {
     fireEvent.change(slider, { target: { value: '0.3' } })
     await tick()
     const cards = screen.getByText('Cost · BDT').closest('dl')!
-    expect(within(cards).getByText('100')).toBeInTheDocument()
-    await tick(150)
-    const values = within(cards).getAllByRole('definition').map((item) => Number(item.textContent))
-    expect(values[0]).toBeGreaterThan(100)
-    expect(values[0]).toBeLessThan(201)
-    expect(values[1]).toBeGreaterThan(10)
-    expect(values[1]).toBeLessThan(21)
-    expect(values[2]).toBeGreaterThan(1.1)
-    expect(values[2]).toBeLessThan(2.2)
-    await tick(200)
     expect(within(cards).getByText('201')).toBeInTheDocument()
     expect(within(cards).getByText('10')).toBeInTheDocument()
     expect(within(cards).getByText('1.1')).toBeInTheDocument()
@@ -424,7 +429,8 @@ describe('cost and carbon control', () => {
       battery.querySelector('.recharts-line-curve')?.getAttribute('d'),
     ]
     const intermediate = paths()
-    expect(screen.queryByText('321')).not.toBeInTheDocument()
+    // The exact total stays accessible throughout the decorative animation.
+    expect(screen.getByText('321')).toBeInTheDocument()
     act(() => {
       media.matches = true
       listeners.forEach((listener) => listener())
