@@ -9,8 +9,13 @@ import ExplainerPanel from './components/ExplainerPanel'
 import BacktestView from './components/BacktestView'
 import TradeoffView from './components/TradeoffView'
 import SameDayComparison from './components/SameDayComparison'
+import { PlanSkeleton, SelectSkeleton } from './components/Skeleton'
 import { createBacktestData } from './backtest/data'
 import type { BacktestData } from './backtest/data'
+import HeaderAtmosphere from './components/HeaderAtmosphere'
+import ShinyText from './fx/ShinyText'
+import { useReducedMotion } from './hooks/useReducedMotion'
+import { useDashboardMotion } from './hooks/useDashboardMotion'
 import './App.css'
 
 function PlanSummary({ plan, source, selectedDate, onSeeLimits }: { plan: PlanResponse; source: BacktestData; selectedDate: string; onSeeLimits: () => void }) {
@@ -45,7 +50,9 @@ function PlanSummary({ plan, source, selectedDate, onSeeLimits }: { plan: PlanRe
   </>
 }
 
-function PlanPanel({ date, weight, onPlan, source, onSeeLimits }: { date: string; weight: number; onPlan: (plan: PlanResponse) => void; source: BacktestData; onSeeLimits: () => void }) {
+type SolvedPlan = { response: PlanResponse; requestedWeight: number }
+
+function PlanPanel({ date, weight, onPlan, source, onSeeLimits }: { date: string; weight: number; onPlan: (plan: SolvedPlan) => void; source: BacktestData; onSeeLimits: () => void }) {
   const request = useMemo(() => ({ date, w: weight }), [date, weight])
   const [state, setState] = useState<{
     request: typeof request
@@ -59,7 +66,7 @@ function PlanPanel({ date, weight, onPlan, source, onSeeLimits }: { date: string
     const timer = setTimeout(() => {
       void api.plan(request, controller.signal).then((result) => {
         if (!active || (!result.ok && result.error.kind === 'aborted')) return
-        if (result.ok) onPlan(result.data)
+        if (result.ok) onPlan({ response: result.data, requestedWeight: request.w })
         setState((previous) => ({
           request, result,
           previousPlan: result.ok ? result.data : previous?.previousPlan ?? null,
@@ -81,7 +88,7 @@ function PlanPanel({ date, weight, onPlan, source, onSeeLimits }: { date: string
     {error && <p className="warning" role="alert">{error.message}</p>}
     {error && plan && <p className="muted">Showing previous plan: {plan.date}.</p>}
     <section aria-label="Plan results" aria-busy={loading} className={loading || error ? 'plan-results is-stale' : 'plan-results'}>
-      {plan && <PlanSummary plan={plan} source={source} selectedDate={date} onSeeLimits={onSeeLimits} />}
+      {plan ? <PlanSummary plan={plan} source={source} selectedDate={date} onSeeLimits={onSeeLimits} /> : loading && <PlanSkeleton />}
     </section>
   </>
 }
@@ -96,11 +103,14 @@ export default function App() {
     const tab = hashTab()
     return { tab, visited: new Set<Tab>(['plan', tab]), limitsRequest: window.location.hash === '#limits' ? 1 : 0 }
   })
+  const shell = useRef<HTMLDivElement>(null)
+  const reducedMotion = useReducedMotion()
+  useDashboardMotion(shell, tabs.tab)
   const tabButtons = useRef<(HTMLButtonElement | null)[]>([])
   const [days, setDays] = useState<ApiResult<DayInfo[]> | null>(null)
   const [selectedDate, setSelectedDate] = useState('')
   const [weight, setWeight] = useState(0.5)
-  const [shownPlan, setShownPlan] = useState<PlanResponse | null>(null)
+  const [shownPlan, setShownPlan] = useState<SolvedPlan | null>(null)
   const selectedDay = days?.ok ? days.data.find((day) => day.date === selectedDate) : undefined
 
   useEffect(() => {
@@ -139,12 +149,15 @@ export default function App() {
   }, [])
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" ref={shell}>
       <header className="page-header">
+        <HeaderAtmosphere />
         <div className="header-inner container-wrap">
           <div className="brand-cluster">
             <h1 className="brand-heading">
-              <img src="/logo-full-light.png" alt="Energy Brain" className="brand-logo" />
+              <ShinyText className="brand-sheen" color="transparent" shineColor="#ffffff" speed={3} delay={5} shineWidth={18} disabled={reducedMotion}>
+                <img src="/logo-full-light.png" alt="Energy Brain" className="brand-logo" />
+              </ShinyText>
             </h1>
             <span className="brand-subtitle">DHAKA MICROGRID · AI DISPATCH</span>
           </div>
@@ -179,7 +192,7 @@ export default function App() {
           <div role="tabpanel" id="plan-panel" aria-labelledby="plan-tab" hidden={tabs.tab !== 'plan'} tabIndex={0}>
           <section className="day-toolbar" aria-label="Day selection">
             <div><h2>Daily overview</h2><p className="muted">Review the planner’s cost and carbon results.</p></div>
-            {!days && <p role="status">Loading days…</p>}
+            {!days && <div className="day-field"><p role="status" className="skeleton-status">Loading days…</p><SelectSkeleton /></div>}
             {days && !days.ok && days.error.kind !== 'aborted' && <p className="warning" role="alert">{days.error.message}</p>}
             {days?.ok && (days.data.length > 0 ? (
               <div className="day-field">
@@ -196,9 +209,9 @@ export default function App() {
               <div className="panel-heading"><h2 id="schedule-title">Schedule dashboard</h2><span className="muted">Daily plan</span></div>
               <WeightSlider value={weight} onChange={setWeight} />
               <button type="button" className="limits-link" onClick={() => selectTab('tradeoff')}>See the trade-off curve</button>
+              {!days && <PlanSkeleton />}
               {selectedDate && <PlanPanel date={selectedDate} weight={weight} onPlan={setShownPlan} source={backtestData} onSeeLimits={seeLimits} />}
             </section>
-            <ExplainerPanel date={selectedDate} weight={shownPlan?.weight ?? weight} />
           </div>
           </div>
           <div role="tabpanel" id="tradeoff-panel" aria-labelledby="tradeoff-tab" hidden={tabs.tab !== 'tradeoff'} tabIndex={0}>
@@ -210,6 +223,7 @@ export default function App() {
           </div>
         </main>
       </div>
+      <ExplainerPanel date={selectedDate} weight={shownPlan?.response.date === selectedDate && shownPlan.requestedWeight === weight ? shownPlan.response.weight : weight} />
       <footer className="site-footer">
         <div className="footer-inner container-wrap">
           <div className="footer-grid">
@@ -240,11 +254,11 @@ export default function App() {
           <div className="footer-bottom">
             <span>Energy Brain · Site time: Asia/Dhaka</span>
             <div className="footer-signature" aria-hidden="true">
-              <span className="swatch" style={{ background: '#220901' }} />
-              <span className="swatch" style={{ background: '#621708' }} />
-              <span className="swatch" style={{ background: '#941B0C' }} />
-              <span className="swatch" style={{ background: '#BC3908' }} />
-              <span className="swatch" style={{ background: '#F6AA1C' }} />
+              <span className="swatch" style={{ background: '#0B2545' }} />
+              <span className="swatch" style={{ background: '#2F6FDB' }} />
+              <span className="swatch" style={{ background: '#F5A623' }} />
+              <span className="swatch" style={{ background: '#14A38B' }} />
+              <span className="swatch" style={{ background: '#C2410C' }} />
             </div>
           </div>
         </div>

@@ -42,6 +42,7 @@ function mockApi(explain: (init: RequestInit) => Promise<Response> = async () =>
 async function start() {
   render(<App />)
   await screen.findByText('152,703')
+  fireEvent.click(screen.getByRole('button', { name: 'Open plan explainer' }))
   return screen.getByRole('textbox', { name: 'Ask about the plan' })
 }
 function ask() { fireEvent.click(screen.getByRole('button', { name: questions[0] })) }
@@ -80,6 +81,7 @@ it('uses requested weight before a plan is available and the current selected da
   const fetchMock = mockApi()
   render(<App />)
   const picker = await screen.findByRole('combobox')
+  fireEvent.click(screen.getByRole('button', { name: 'Open plan explainer' }))
   fireEvent.change(picker, { target: { value: '2024-07-01' } })
   fireEvent.change(screen.getByRole('slider'), { target: { value: '0.7' } })
   ask()
@@ -151,6 +153,7 @@ it('disables sending during the 429 countdown and re-enables at zero', async () 
   const input = await start()
   vi.useFakeTimers()
   await act(async () => ask())
+  fireEvent.click(screen.getByRole('button', { name: 'Suggestions' }))
   expect(screen.getByText('Try again in 3 seconds.')).toBeInTheDocument()
   expect(input).toBeDisabled()
   expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled()
@@ -201,15 +204,18 @@ it('aborts on a second suggestion, ignores late results, and aborts on unmount',
   mockApi((init) => new Promise((resolve) => requests.push({ init, resolve })))
   const view = render(<App />)
   await screen.findByText('152,703')
+  fireEvent.click(screen.getByRole('button', { name: 'Open plan explainer' }))
   ask()
   expect(screen.getByText('Asking the explainer...')).toBeInTheDocument()
   expect(screen.getByRole('textbox')).toBeDisabled()
+  fireEvent.click(screen.getByRole('button', { name: 'Suggestions' }))
   fireEvent.click(screen.getByRole('button', { name: questions[1] }))
   expect(requests[0].init.signal?.aborted).toBe(true)
   await act(async () => requests[1].resolve(json(answer({ answer: 'Current answer' }))))
   expect(screen.getByText('Current answer')).toBeInTheDocument()
   await act(async () => requests[0].resolve(json(answer({ answer: 'Obsolete answer' }))))
   expect(screen.queryByText('Obsolete answer')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Suggestions' }))
   ask()
   view.unmount()
   expect(requests[2].init.signal?.aborted).toBe(true)
@@ -246,5 +252,101 @@ it('rejects empty input, limits to 500 characters, trims questions and distingui
   expect(await screen.findByText('Verified')).toBeInTheDocument()
   expect(fetchMock).toHaveBeenCalledWith('http://localhost:8000/explain', expect.objectContaining({
     body: JSON.stringify({ date: '2024-07-02', w: 0.5, question: 'Why?\nNow' }),
+  }))
+})
+
+it('opens a labelled dialog, closes from the header and launcher, and returns focus on Escape', async () => {
+  mockApi()
+  render(<App />)
+  await screen.findByText('152,703')
+  const launcher = screen.getByRole('button', { name: 'Open plan explainer' })
+  expect(launcher).toHaveAttribute('aria-expanded', 'false')
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  fireEvent.click(launcher)
+  const dialog = screen.getByRole('dialog', { name: 'Energy Brain Assistant' })
+  expect(dialog).toHaveAttribute('aria-modal', 'false')
+  expect(launcher).toHaveAttribute('aria-controls', dialog.id)
+  expect(launcher).toHaveAttribute('aria-expanded', 'true')
+  expect(screen.getByRole('textbox')).toHaveFocus()
+  fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' })
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(launcher).toHaveFocus()
+  fireEvent.click(launcher)
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Close plan explainer' }))
+  expect(launcher).toHaveFocus()
+  fireEvent.click(launcher)
+  fireEvent.click(launcher)
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+})
+
+it('keeps pending requests and drafts across closing, marks unread answers, and does not steal focus', async () => {
+  let resolveAnswer!: (response: Response) => void
+  let signal!: AbortSignal
+  mockApi((init) => { signal = init.signal as AbortSignal; return new Promise((resolve) => { resolveAnswer = resolve }) })
+  const input = await start()
+  ask()
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Close plan explainer' }))
+  const launcher = screen.getByRole('button', { name: 'Open plan explainer' })
+  expect(signal.aborted).toBe(false)
+  await act(async () => resolveAnswer(json(answer())))
+  expect(launcher).toHaveFocus()
+  expect(within(launcher).getByText('Unread answer')).toBeInTheDocument()
+  fireEvent.click(launcher)
+  expect(screen.getByText('Verified')).toBeVisible()
+  expect(screen.getByRole('textbox')).toBe(input)
+  expect(within(launcher).queryByText('Unread answer')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: questions[0] })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Suggestions' }))
+  expect(screen.getByRole('button', { name: questions[0] })).toBeVisible()
+  fireEvent.change(input, { target: { value: 'Unsent question' } })
+  fireEvent.click(launcher)
+  fireEvent.click(launcher)
+  expect(input).toHaveValue('Unsent question')
+  expect(screen.getByText('Verified')).toBeVisible()
+})
+
+it('stays available with the same conversation on every tab', async () => {
+  mockApi()
+  await start()
+  ask()
+  await screen.findByText('Verified')
+  for (const name of ['Trade-off', 'Backtest results', "Today's plan"]) {
+    fireEvent.click(screen.getByRole('tab', { name }))
+    expect(screen.getByRole('dialog')).toBeVisible()
+    expect(screen.getByText('Verified')).toBeVisible()
+    expect(screen.getByText('Day 2024-07-02 · w = 0.50')).toBeVisible()
+  }
+})
+
+it('disables the composer when no planning date is available', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => json({ ...days, days: [] })))
+  render(<App />)
+  await screen.findByText('No planning days available.')
+  fireEvent.click(screen.getByRole('button', { name: 'Open plan explainer' }))
+  expect(screen.getByRole('textbox')).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled()
+})
+
+it('locks body scrolling only while the phone sheet is open and restores existing styles', async () => {
+  vi.stubGlobal('matchMedia', vi.fn((query: string) => ({
+    matches: query === '(max-width: 639px)', addEventListener: vi.fn(), removeEventListener: vi.fn(),
+  })))
+  mockApi()
+  document.body.style.overflow = 'auto'
+  await start()
+  expect(document.body.style.overflow).toBe('hidden')
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Close plan explainer' }))
+  expect(document.body.style.overflow).toBe('auto')
+  document.body.style.overflow = ''
+})
+
+it('uses the new selected weight while an older solved plan is still displayed', async () => {
+  const fetchMock = mockApi()
+  await start()
+  fireEvent.change(screen.getByRole('slider'), { target: { value: '0.7' } })
+  ask()
+  await screen.findByText('Verified')
+  expect(fetchMock).toHaveBeenCalledWith('http://localhost:8000/explain', expect.objectContaining({
+    body: JSON.stringify({ date: '2024-07-02', w: 0.7, question: questions[0] }),
   }))
 })

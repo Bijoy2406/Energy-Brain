@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { DayInfo } from '../api/client'
 import TradeoffChart from '../chart/TradeoffChart'
+import { TradeoffSkeleton } from './Skeleton'
 import { formatBdt, formatKg, formatHours, formatPercent } from '../formatting'
 import { usePareto } from '../hooks/usePareto'
 import { explainInefficientPlan, formatWeight, frontierGroups, groupPoints, nearestWeight, tradeoffSummary } from '../tradeoff/tradeoffData'
@@ -38,6 +39,7 @@ export default function TradeoffView({ date, days, weight, active, onDateChange,
       {retryAfter > 0 && <p role="status">Try again in {retryAfter} seconds.</p>}
       <button type="button" disabled={retryAfter > 0 || loading} onClick={retry}>Retry</button>
     </div>}
+    {!data && loading && <TradeoffSkeleton />}
     {data && <section className={`panel tradeoff-results ${stale ? 'is-stale' : ''}`} aria-label="Trade-off results" aria-busy={loading}>
       {stale && <p>Showing previous result: {data.date}. Settings are unavailable until this day finishes loading.</p>}
       <TradeoffChart groups={groups} frontier={frontier} currentGroup={nearest?.group} onSelect={selectGroup} />

@@ -3,20 +3,21 @@ import { baselines, useBacktestDays, useBacktestReport } from '../backtest/data'
 import type { BacktestData, Comparison, Report, WeightSummary } from '../backtest/data'
 import { savingWords } from '../backtest/comparison'
 import { formatBdt, formatHours, formatInteger, formatKg, formatKw, formatLitres, formatPercent } from '../formatting'
+import AnimatedValue from './AnimatedValue'
 import BacktestCaveats from './BacktestCaveats'
 import BacktestChart from '../chart/BacktestChart'
 import { useLimitsNavigation } from '../hooks/useLimitsNavigation'
 
 function ComparisonCard({ name, values, requested, onSeeLimits }: { name: string; values: Comparison; requested: number; onSeeLimits: () => void }) {
-  return <article className="panel comparison-card" aria-label={`Energy Brain vs ${name}`}>
+  return <article tabIndex={0} className="panel comparison-card" aria-label={`Energy Brain vs ${name}`}>
     <p className="eyebrow">ENERGY BRAIN VS BASELINE</p>
     <h3>{name}</h3>
-    <p className="comparison-result">{savingWords(values.cost_saved_pct, 'cost')} ({formatBdt(Math.abs(values.cost_saved_bdt))} BDT {values.cost_saved_bdt >= 0 ? 'less' : 'more'})</p>
-    <p className="comparison-result">{savingWords(values.co2_saved_pct, 'CO2')} ({formatKg(Math.abs(values.co2_saved_kg))} kg {values.co2_saved_kg >= 0 ? 'less' : 'more'})</p>
+    <p className="comparison-result"><AnimatedValue value={values.cost_saved_bdt} format={amount => `${savingWords(values.cost_saved_pct, 'cost')} (${formatBdt(Math.abs(amount))} BDT ${values.cost_saved_bdt >= 0 ? 'less' : 'more'})`} /></p>
+    <p className="comparison-result"><AnimatedValue value={values.co2_saved_kg} format={amount => `${savingWords(values.co2_saved_pct, 'CO2')} (${formatKg(Math.abs(amount))} kg ${values.co2_saved_kg >= 0 ? 'less' : 'more'})`} /></p>
     <p className="muted">Adjusted results vs {name} · synthetic data, 2024 replay. <button type="button" className="limits-link" onClick={onSeeLimits}>See limits</button></p>
     <ul className="comparison-facts">
-      <li>{formatHours(Math.abs(values.generator_hours_saved))} {values.generator_hours_saved >= 0 ? 'fewer' : 'more'} generator hours vs {name}</li>
-      <li>{formatLitres(Math.abs(values.diesel_litres_saved))} {values.diesel_litres_saved >= 0 ? 'fewer' : 'more'} diesel litres vs {name}</li>
+      <li><AnimatedValue value={Math.abs(values.generator_hours_saved)} format={formatHours} /> {values.generator_hours_saved >= 0 ? 'fewer' : 'more'} generator hours vs {name}</li>
+      <li><AnimatedValue value={Math.abs(values.diesel_litres_saved)} format={formatLitres} /> {values.diesel_litres_saved >= 0 ? 'fewer' : 'more'} diesel litres vs {name}</li>
       <li>Costlier than the baseline on {formatInteger(values.days_cost_worse)} of {formatInteger(requested)} days ({name})</li>
       <li>Median per-day cost saving vs {name}: {savingWords(values.per_day_cost_saved_pct.median, 'cost')}</li>
       <li>Load-shedding days ({formatInteger(values.outage_days.days)}): {savingWords(values.outage_days.cost_saved_pct, 'cost')} vs {name} / {savingWords(values.outage_days.co2_saved_pct, 'CO2')} vs {name}</li>
@@ -43,11 +44,11 @@ function ForecastQuality({ report }: { report: Report }) {
   return <section className="panel" aria-label="Forecast quality">
     <h2>Forecast quality</h2>
     <dl className="forecast-metrics">
-      <div><dt>Solar MAE</dt><dd>{formatKw(forecast.solar_mae_kw)} kW</dd></div>
-      <div><dt>Load MAE</dt><dd>{formatKw(forecast.load_mae_kw)} kW</dd></div>
-      <div><dt>Solar P10–P90 coverage</dt><dd>{formatPercent(forecast.solar_p10_p90_coverage_pct)} %</dd></div>
-      <div><dt>Solar daylight-only P10–P90 coverage</dt><dd>{formatPercent(forecast.solar_daylight_p10_p90_coverage_pct)} %</dd></div>
-      <div><dt>Load P10–P90 coverage</dt><dd>{formatPercent(forecast.load_p10_p90_coverage_pct)} %</dd></div>
+      <div tabIndex={0}><dt>Solar MAE</dt><dd><AnimatedValue value={forecast.solar_mae_kw} format={formatKw} /> kW</dd></div>
+      <div tabIndex={0}><dt>Load MAE</dt><dd><AnimatedValue value={forecast.load_mae_kw} format={formatKw} /> kW</dd></div>
+      <div tabIndex={0}><dt>Solar P10–P90 coverage</dt><dd><AnimatedValue value={forecast.solar_p10_p90_coverage_pct} format={formatPercent} /> %</dd></div>
+      <div tabIndex={0}><dt>Solar daylight-only P10–P90 coverage</dt><dd><AnimatedValue value={forecast.solar_daylight_p10_p90_coverage_pct} format={formatPercent} /> %</dd></div>
+      <div tabIndex={0}><dt>Load P10–P90 coverage</dt><dd><AnimatedValue value={forecast.load_p10_p90_coverage_pct} format={formatPercent} /> %</dd></div>
     </dl>
     <p className="muted">{forecast.label}</p>
     <p className="muted">{forecast.coverage_definition}</p>

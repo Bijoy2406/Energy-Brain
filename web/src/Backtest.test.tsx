@@ -39,6 +39,7 @@ it('keeps date, slider, plan and chat draft mounted while tabs switch, with hash
   await screen.findByText('152,703')
   await user.selectOptions(screen.getByRole('combobox'), '2024-07-01')
   fireEvent.change(screen.getByRole('slider'), { target: { value: '0.3' } })
+  await user.click(screen.getByRole('button', { name: 'Open plan explainer' }))
   await user.type(screen.getByRole('textbox'), 'My draft question')
   const planTab = screen.getByRole('tab', { name: "Today's plan" })
   planTab.focus()

@@ -8,13 +8,13 @@ import { buildScheduleRows, formatKw, formatKwh, outageBlocks, peakSlots } from 
 import type { ScheduleRow } from './scheduleData'
 import { useReducedMotion } from '../hooks/useReducedMotion'
 
-// Four series colours that stay distinguishable for colour-blind readers (checked with protan, deutan and tritan
-// simulation): amber and crimson are the brand colours, teal and blue were added for battery and grid.
+// Navy + solar series palette for colour-blind distinguishability:
+// amber solar, teal battery, blue grid and burnt orange generator.
 const sources = [
-  { key: 'solar', name: 'Solar', color: '#F6AA1C' },
-  { key: 'batteryDischarge', name: 'Battery discharge', color: '#1FA896' },
-  { key: 'grid', name: 'Grid import', color: '#2F5FA8' },
-  { key: 'generator', name: 'Generator', color: '#941B0C' },
+  { key: 'solar', name: 'Solar', color: '#F5A623' },
+  { key: 'batteryDischarge', name: 'Battery discharge', color: '#14A38B' },
+  { key: 'grid', name: 'Grid import', color: '#2F6FDB' },
+  { key: 'generator', name: 'Generator', color: '#C2410C' },
 ] as const
 
 function SlotTooltip({ row, battery }: { row?: ScheduleRow; battery: boolean }) {
@@ -109,7 +109,7 @@ export default function ScheduleCharts({ response }: { response: PlanResponse })
               {outageAreas}
               <ReferenceLine y={min} stroke="var(--muted)" strokeDasharray="5 4" label={{ value: 'Min', position: 'insideBottomRight', fill: 'var(--muted)', fontSize: 11 }} />
               <ReferenceLine y={max} stroke="var(--muted)" strokeDasharray="5 4" label={{ value: 'Max', position: 'insideTopRight', fill: 'var(--muted)', fontSize: 11 }} />
-              <Line type="linear" dataKey="soc" name="Battery SoC (end of slot)" stroke="#1FA896" strokeWidth={2.5} dot={false} {...animation} />
+              <Line type="linear" dataKey="soc" name="Battery SoC (end of slot)" stroke="#14A38B" strokeWidth={2.5} dot={false} {...animation} />
               <Tooltip isAnimationActive={!reducedMotion} content={({ active, payload }) => <SlotTooltip row={active ? payload?.[0]?.payload as ScheduleRow : undefined} battery />} />
             </LineChart>
           </ResponsiveContainer>

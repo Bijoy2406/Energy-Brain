@@ -8,6 +8,7 @@ afterEach(() => {
   cleanup()
   vi.useRealTimers()
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
   window.history.replaceState(null, '', '/')
 })
 
@@ -23,3 +24,15 @@ class TestResizeObserver implements ResizeObserver {
   disconnect() {}
 }
 Object.defineProperty(globalThis, 'ResizeObserver', { configurable: true, value: TestResizeObserver })
+
+// Keep enhancements out of view unless a test explicitly enters the viewport.
+class TestIntersectionObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+Object.defineProperty(globalThis, 'IntersectionObserver', { configurable: true, writable: true, value: TestIntersectionObserver })
+Object.defineProperty(window, 'matchMedia', { configurable: true, writable: true, value: (query: string) => ({
+  matches: false, media: query, onchange: null,
+  addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false,
+}) })
