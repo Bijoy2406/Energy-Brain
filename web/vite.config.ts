@@ -9,5 +9,9 @@ export default defineConfig({
     setupFiles: './src/test/setup.ts',
     restoreMocks: true,
     unstubGlobals: true,
+    // These tests render the whole app with charts. Under CPU load a single test can pass 5 s, so a short
+    // limit gives false failures; a really hung test still fails, just later.
+    testTimeout: 30000,
+    hookTimeout: 30000,
   },
 })

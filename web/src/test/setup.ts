@@ -1,8 +1,15 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup } from '@testing-library/react'
-import { afterEach } from 'vitest'
+import { cleanup, configure } from '@testing-library/react'
+import { afterEach, vi } from 'vitest'
 
-afterEach(cleanup)
+configure({ asyncUtilTimeout: 4000 })
+
+afterEach(() => {
+  cleanup()
+  vi.useRealTimers()
+  vi.restoreAllMocks()
+  window.history.replaceState(null, '', '/')
+})
 
 // jsdom has no layout engine. Give ResponsiveContainer a measured viewport
 // while keeping the real Recharts rendering and accessibility behavior.

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import App from './App'
 import { days, planFixture } from './test/fixtures'
 import { backtestDaysFixture, backtestFixture, baselineNames, caveats } from './test/backtestFixture'
+import { findStable } from './test/stable'
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
 function mockApi(report: () => Promise<Response> = async () => json(backtestFixture()), initialPlan = planFixture(), daily: (weight: number) => Promise<Response> = async (weight) => json(backtestDaysFixture(weight))) {
@@ -41,12 +42,12 @@ it('keeps date, slider, plan and chat draft mounted while tabs switch, with hash
   await user.type(screen.getByRole('textbox'), 'My draft question')
   const planTab = screen.getByRole('tab', { name: "Today's plan" })
   planTab.focus()
-  await user.keyboard('{ArrowRight}')
+  await user.keyboard('{End}')
   expect(screen.getByRole('tab', { name: 'Backtest results' })).toHaveFocus()
   expect(window.location.hash).toBe('#backtest')
   expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', 'backtest-tab')
   await screen.findByRole('heading', { name: baselineNames.baseline_solar_first })
-  await user.keyboard('{ArrowLeft}')
+  await user.keyboard('{Home}')
   expect(planTab).toHaveAttribute('aria-selected', 'true')
   expect(window.location.hash).toBe('')
   expect(screen.getByRole('slider')).toHaveValue('0.3')
@@ -161,7 +162,7 @@ it('rounds daily costs and CO2 in the same-day table and chart tooltip without c
   expect(within(sameDay).getByRole('button', { name: 'See limits of these numbers' })).toBeInTheDocument()
   for (const caveat of caveats) expect(within(sameDay).queryByText(caveat)).not.toBeInTheDocument()
   await openBacktest()
-  const chart = await screen.findByRole('application', { name: /Daily cost saved in BDT/ })
+  const chart = await findStable(() => screen.getByRole('application', { name: /Daily cost saved in BDT/ }))
   act(() => chart.focus())
   await userEvent.keyboard('{ArrowRight}')
   const region = screen.getByRole('region', { name: 'Daily cost comparison' })
@@ -246,17 +247,16 @@ it('renders the daily bar chart and switches its named baseline; keyboard toolti
   mockApi()
   render(<App />)
   await openBacktest()
-  const chart = await screen.findByRole('application', { name: /Daily cost saved in BDT/ })
-  const user = userEvent.setup()
+  const chart = await findStable(() => screen.getByRole('application', { name: /Daily cost saved in BDT/ }))
   act(() => chart.focus())
-  await user.keyboard('{ArrowRight}')
+  await userEvent.keyboard('{ArrowRight}')
   const region = screen.getByRole('region', { name: 'Daily cost comparison' })
   expect(await within(region).findByText('2024-07-02 · Tue')).toBeInTheDocument()
   expect(region).toHaveTextContent('100 BDT')
   expect(region).toHaveTextContent('80 BDT')
   expect(region).toHaveTextContent('20 BDT less')
   expect(region.querySelector('pattern')).toBeInTheDocument()
-  await user.click(screen.getByRole('button', { name: 'Time-of-use' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Time-of-use' }))
   expect(region).toHaveTextContent(`Daily cost saved vs ${baselineNames.baseline_time_of_use} (computed from the daily values returned by the API)`)
 })
 

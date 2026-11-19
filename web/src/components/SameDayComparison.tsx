@@ -9,7 +9,7 @@ export default function SameDayComparison({ plan, source, selectedDate, onSeeLim
   const current = plan.date === selectedDate
   const supported = [0, 0.5, 1].includes(plan.weight)
   const result = useBacktestDays(source, !outside && supported && current ? plan.weight : null)
-  const day = result?.ok ? result.data.days.find((row) => row.date === selectedDate) : undefined
+  const day = result?.ok && Array.isArray(result.data.days) ? result.data.days.find((row) => row.date === selectedDate) : undefined
   const explanation = outside ? 'Date outside the backtest.' : !current ? `Waiting for the solved plan for ${selectedDate}.` : !supported ? 'Move the slider to 0, 0.5 or 1 to compare this day.' : null
   return <section className="same-day-card chart-section" aria-label="Baseline vs Energy Brain, same day">
     <h3>Baseline vs Energy Brain, same day</h3>
