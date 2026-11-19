@@ -217,7 +217,7 @@ export default function App() {
               <img src="/logo-full-light.png" alt="" className="footer-logo" />
               <p className="footer-title">Dhaka Commercial Microgrid</p>
               <p className="footer-desc">
-                Multi-agent dispatch optimizer orchestrating solar PV, battery energy storage, flexible HVAC/EV loads, and diesel backup.
+                Multi-agent dispatch optimizer scheduling solar PV, battery storage, EV charging, and diesel backup within HVAC comfort limits.
               </p>
             </div>
             <div className="footer-col">
