@@ -17,6 +17,11 @@ data/processed/
 models/*
 !models/.gitkeep
 
+# Exact deployment artifacts belong only in the generated Space repository.
+/deploy/artifacts/data/
+/deploy/artifacts/models/
+/deploy/artifacts/MANIFEST.sha256
+
 # Frontend
 node_modules/
 web/dist/
@@ -28,3 +33,4 @@ Thumbs.db
 .idea/
 .venv-linux/
 .statamcp/
+build/

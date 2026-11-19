@@ -20,6 +20,7 @@ answers are loaded on first use.
 from __future__ import annotations
 
 import logging
+import math
 import threading
 import time
 from collections import OrderedDict, deque
@@ -47,6 +48,8 @@ from energy_brain.api.models import (
     ExplainResponse,
     FallbackInfo,
     HealthResponse,
+    ParetoPoint,
+    ParetoResponse,
     PlanResponse,
     WarmupStatus,
     last_plan_day,
@@ -65,6 +68,10 @@ SAMPLE_FILES = ("load_sample.parquet", "pv_sample.parquet", "weather_sample.parq
 MODEL_FILES = tuple(f"{k}_p{q}.txt" for k in ("solar", "load") for q in (10, 50, 90))
 WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 WEEKDAY_NAMES = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+
+PARETO_WEIGHTS = (0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.75, 1.0)
+PARETO_CACHE_SIZE = 64
+PARETO_REL_TOL = 1e-6
 
 _UNSET = object()
 
@@ -162,6 +169,9 @@ class PlanService:
         self._cache_lock = threading.Lock()
         self._cache: OrderedDict[tuple[date, float], CachedPlan] = OrderedDict()
         self._inflight: dict[tuple[date, float], Future] = {}
+        self._pareto_cache: OrderedDict[date, ParetoResponse] = OrderedDict()
+        self._pareto_inflight: dict[date, Future] = {}
+        self.pareto_limiter = RateLimiter(6, 30, clock=clock)
         self._tier_by_date: dict[date, str] = {}
         self._signals_by_date: dict[date, tuple[Any, str | None]] = {}
         self.hits = 0
@@ -291,6 +301,128 @@ class PlanService:
             computed_at=entry.computed_at,
         )
 
+    # ------------------------------------------------------------------ Pareto
+
+    def pareto_response(self, day: date, client: str | None = None) -> ParetoResponse:
+        """Single-flight per day. Never hold the cache lock while waiting or calling get_plan.
+
+        A client is supplied by the route; background warm-up bypasses the request limiter.
+        Cache-hit point metadata describes the original computation, including plan_cached.
+        """
+        t0 = time.perf_counter()
+
+        def served(body: ParetoResponse, cached: bool) -> ParetoResponse:
+            return body.model_copy(
+                deep=True,
+                update={
+                    "cached": cached,
+                    "solve_seconds": time.perf_counter() - t0,
+                },
+            )
+
+        with self._cache_lock:
+            entry = self._pareto_cache.get(day)
+            if entry is not None:
+                self._pareto_cache.move_to_end(day)
+                return served(entry, True)
+            fut = self._pareto_inflight.get(day)
+            owner = fut is None
+            if owner:
+                if client is not None:
+                    self.pareto_limiter.hit(client)
+                fut = Future()
+                self._pareto_inflight[day] = fut
+        if not owner:
+            return served(fut.result(), True)
+        try:
+            body = self._compute_pareto(day)
+        except BaseException as exc:
+            with self._cache_lock:
+                self._pareto_inflight.pop(day, None)
+            fut.set_exception(exc)
+            raise
+        with self._cache_lock:
+            self._pareto_cache[day] = body
+            while len(self._pareto_cache) > PARETO_CACHE_SIZE:
+                self._pareto_cache.popitem(last=False)
+            self._pareto_inflight.pop(day, None)
+        fut.set_result(body)
+        return served(body, False)
+
+    def _compute_pareto(self, day: date) -> ParetoResponse:
+        points: list[ParetoPoint] = []
+        representatives: list[ParetoPoint] = []
+        warnings: list[str] = []
+        first = None
+
+        def close(a: float, b: float) -> bool:
+            return math.isclose(a, b, rel_tol=PARETO_REL_TOL, abs_tol=0.0)
+
+        for w in PARETO_WEIGHTS:
+            # plan_response calls get_plan, sharing exactly the slider's plans and metadata.
+            response = self.plan_response(day, w)
+            if first is None:
+                first = response
+            warnings.extend(b for b in response.banners if b not in warnings)
+            plan, totals = response.plan, response.plan.totals
+            representative = next(
+                (
+                    p
+                    for p in representatives
+                    if close(p.cost_bdt, totals.cost_bdt) and close(p.co2_kg, totals.co2_kg)
+                ),
+                None,
+            )
+            point = ParetoPoint(
+                weight=response.weight,
+                cost_bdt=totals.cost_bdt,
+                co2_kg=totals.co2_kg,
+                generator_hours=totals.generator_hours,
+                diesel_litres=totals.diesel_litres,
+                status=plan.status,
+                safe=response.safe,
+                risk_ok=response.risk_ok,
+                replans=plan.risk.replans,
+                efficient=False,
+                group=representative.group if representative is not None else len(representatives),
+                same_as_weight=representative.weight if representative is not None else None,
+                plan_cached=response.cached,
+            )
+            points.append(point)
+            if representative is None:
+                representatives.append(point)
+
+        safe = [p for p in points if p.safe]
+        for p in safe:
+            p.efficient = not any(
+                (q.cost_bdt <= p.cost_bdt or close(q.cost_bdt, p.cost_bdt))
+                and (q.co2_kg <= p.co2_kg or close(q.co2_kg, p.co2_kg))
+                and (
+                    (q.cost_bdt < p.cost_bdt and not close(q.cost_bdt, p.cost_bdt))
+                    or (q.co2_kg < p.co2_kg and not close(q.co2_kg, p.co2_kg))
+                )
+                for q in safe
+            )
+        efficient_groups: dict[int, ParetoPoint] = {}
+        for p in points:
+            if p.efficient:
+                efficient_groups.setdefault(p.group, p)
+        if not safe:
+            warnings.append("No safe plans were found; the Pareto frontier is empty.")
+        return ParetoResponse(
+            date=day,
+            points=points,
+            frontier=sorted(efficient_groups.values(), key=lambda p: p.cost_bdt),
+            forecast_fallback=first.forecast_fallback,
+            signal_fallback=first.signal_fallback,
+            banners=warnings,
+            forecast_source=first.forecast_source,
+            cached=False,
+            computed_at=datetime.now(site_tz()),
+            solve_seconds=0.0,
+            distinct_points=len({p.group for p in safe}),
+        )
+
     # ------------------------------------------------------------------ days
 
     def _day_signals(self, day: date) -> tuple[Any, str | None]:
@@ -381,6 +513,16 @@ class PlanService:
             except Exception:
                 self._warmup["errors"] += 1
                 logger.exception("warm-up: planning %s w=%s failed", day, w)
+        # Keep existing warm-up plan counters' meaning; Pareto failures still count as errors.
+        for day in dict.fromkeys(day for day, _ in keys):
+            if self._stop.is_set():
+                self._warmup["state"] = "stopped"
+                return
+            try:
+                self.pareto_response(day)
+            except Exception:
+                self._warmup["errors"] += 1
+                logger.exception("warm-up: Pareto %s failed", day)
         self._warmup["state"] = "done"
         logger.info("warm-up: %d plans in %.1f s", self._warmup["planned"], time.perf_counter() - t0)
 

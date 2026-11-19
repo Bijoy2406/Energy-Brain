@@ -283,6 +283,72 @@
           }
         }
       }
+    },
+    "/pareto": {
+      "get": {
+        "tags": [
+          "pareto"
+        ],
+        "summary": "Cost versus CO2 Pareto frontier",
+        "description": "Solve the fixed weight grid sequentially. Totals are planned at P50, before settlement.\nUnsafe plans remain visible but cannot enter the frontier. Cache hits are free.",
+        "operationId": "pareto_pareto_get",
+        "parameters": [
+          {
+            "name": "date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "description": "planning day, YYYY-MM-DD, from 2022-01-01 to tomorrow (site time)",
+              "title": "Date"
+            },
+            "description": "planning day, YYYY-MM-DD, from 2022-01-01 to tomorrow (site time)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParetoResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "too many uncached computations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "no forecast could be made (not even sample data)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1403,6 +1469,176 @@
           "end"
         ],
         "title": "OutageBlock"
+      },
+      "ParetoPoint": {
+        "properties": {
+          "weight": {
+            "type": "number",
+            "title": "Weight"
+          },
+          "cost_bdt": {
+            "type": "number",
+            "title": "Cost Bdt"
+          },
+          "co2_kg": {
+            "type": "number",
+            "title": "Co2 Kg"
+          },
+          "generator_hours": {
+            "type": "number",
+            "title": "Generator Hours"
+          },
+          "diesel_litres": {
+            "type": "number",
+            "title": "Diesel Litres"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "safe": {
+            "type": "boolean",
+            "title": "Safe"
+          },
+          "risk_ok": {
+            "type": "boolean",
+            "title": "Risk Ok"
+          },
+          "replans": {
+            "type": "integer",
+            "title": "Replans"
+          },
+          "efficient": {
+            "type": "boolean",
+            "title": "Efficient"
+          },
+          "group": {
+            "type": "integer",
+            "title": "Group"
+          },
+          "same_as_weight": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Same As Weight"
+          },
+          "plan_cached": {
+            "type": "boolean",
+            "title": "Plan Cached",
+            "description": "plan cache hit when this Pareto body was computed"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "weight",
+          "cost_bdt",
+          "co2_kg",
+          "generator_hours",
+          "diesel_litres",
+          "status",
+          "safe",
+          "risk_ok",
+          "replans",
+          "efficient",
+          "group",
+          "same_as_weight",
+          "plan_cached"
+        ],
+        "title": "ParetoPoint"
+      },
+      "ParetoResponse": {
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "title": "Date"
+          },
+          "weights_meaning": {
+            "type": "string",
+            "const": "1 = cheapest, 0 = cleanest",
+            "title": "Weights Meaning",
+            "default": "1 = cheapest, 0 = cleanest"
+          },
+          "basis": {
+            "type": "string",
+            "const": "planned totals at the P50 forecast, before settlement against actuals",
+            "title": "Basis",
+            "default": "planned totals at the P50 forecast, before settlement against actuals"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/ParetoPoint"
+            },
+            "type": "array",
+            "title": "Points"
+          },
+          "frontier": {
+            "items": {
+              "$ref": "#/components/schemas/ParetoPoint"
+            },
+            "type": "array",
+            "title": "Frontier",
+            "description": "lowest-weight representative of each efficient group, sorted by cost ascending"
+          },
+          "forecast_fallback": {
+            "$ref": "#/components/schemas/FallbackInfo"
+          },
+          "signal_fallback": {
+            "$ref": "#/components/schemas/FallbackInfo"
+          },
+          "banners": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Banners"
+          },
+          "forecast_source": {
+            "type": "string",
+            "title": "Forecast Source"
+          },
+          "cached": {
+            "type": "boolean",
+            "title": "Cached"
+          },
+          "computed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Computed At"
+          },
+          "solve_seconds": {
+            "type": "number",
+            "title": "Solve Seconds",
+            "description": "total wall time of this request, including cache waits"
+          },
+          "distinct_points": {
+            "type": "integer",
+            "title": "Distinct Points",
+            "description": "distinct cost/CO2 groups among safe plans"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "date",
+          "points",
+          "frontier",
+          "forecast_fallback",
+          "signal_fallback",
+          "banners",
+          "forecast_source",
+          "cached",
+          "computed_at",
+          "solve_seconds",
+          "distinct_points"
+        ],
+        "title": "ParetoResponse"
       },
       "PlanRequest": {
         "properties": {
