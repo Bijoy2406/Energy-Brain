@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { api } from './api/client'
 import type { ApiResult, DayInfo, PlanResponse } from './api/client'
 import ScheduleCharts from './chart/ScheduleCharts'
 import { formatBdt, formatKg, formatHours } from './chart/scheduleData'
+import WeightSlider from './components/WeightSlider'
+import AnimatedValue from './components/AnimatedValue'
 import './App.css'
 
 function PlanSummary({ plan }: { plan: PlanResponse }) {
@@ -24,38 +26,48 @@ function PlanSummary({ plan }: { plan: PlanResponse }) {
       <span className="status-badge">{plan.plan.status}</span>
       <span className={`status-badge ${plan.safe ? 'safe-badge' : 'unsafe-badge'}`}>{plan.safe ? 'Safe' : 'NOT safe'}</span>
       {plan.cached && <span className="status-badge">cached</span>}
+      {plan.weight !== plan.weight_requested && <span className="status-badge">Solved at w = {plan.weight.toFixed(2)}</span>}
     </div>
     <dl className="summary-cards">
-      <div tabIndex={0}><dt>Cost · BDT</dt><dd>{formatBdt(plan.plan.totals.cost_bdt)}</dd></div>
-      <div tabIndex={0}><dt>CO2 · kg</dt><dd>{formatKg(plan.plan.totals.co2_kg)}</dd></div>
-      <div tabIndex={0}><dt>Generator hours · h</dt><dd>{formatHours(plan.plan.totals.generator_hours)}</dd></div>
+      <div tabIndex={0}><dt>Cost · BDT</dt><dd><AnimatedValue value={plan.plan.totals.cost_bdt} format={formatBdt} /></dd></div>
+      <div tabIndex={0}><dt>CO2 · kg</dt><dd><AnimatedValue value={plan.plan.totals.co2_kg} format={formatKg} /></dd></div>
+      <div tabIndex={0}><dt>Generator hours · h</dt><dd><AnimatedValue value={plan.plan.totals.generator_hours} format={formatHours} /></dd></div>
     </dl>
     <p className="muted">Totals are reported directly by the planner.</p>
     <ScheduleCharts response={plan} />
   </>
 }
 
-function PlanPanel({ date }: { date: string }) {
+function PlanPanel({ date, weight }: { date: string; weight: number }) {
+  const request = useMemo(() => ({ date, w: weight }), [date, weight])
   const [state, setState] = useState<{
-    date: string
+    request: typeof request
     result: ApiResult<PlanResponse>
     previousPlan: PlanResponse | null
   } | null>(null)
 
   useEffect(() => {
     let active = true
-    void api.plan({ date, w: 0.5 }).then((result) => {
-      if (active) setState((previous) => ({
-        date, result,
-        previousPlan: result.ok ? result.data : previous?.previousPlan ?? null,
-      }))
-    })
-    return () => { active = false }
-  }, [date])
+    const controller = new AbortController()
+    const timer = setTimeout(() => {
+      void api.plan(request, controller.signal).then((result) => {
+        if (!active || (!result.ok && result.error.kind === 'aborted')) return
+        setState((previous) => ({
+          request, result,
+          previousPlan: result.ok ? result.data : previous?.previousPlan ?? null,
+        }))
+      })
+    }, 250)
+    return () => {
+      active = false
+      clearTimeout(timer)
+      controller.abort()
+    }
+  }, [request])
 
-  const loading = state?.date !== date
+  const loading = state?.request !== request
   const plan = state?.previousPlan
-  const error = !loading && state && !state.result.ok ? state.result.error : null
+  const error = !loading && state && !state.result.ok && state.result.error.kind !== 'aborted' ? state.result.error : null
   return <>
     {loading && <p role="status">Loading plan…{plan && ` Showing previous plan: ${plan.date}.`}</p>}
     {error && <p className="warning" role="alert">{error.message}</p>}
@@ -69,12 +81,14 @@ function PlanPanel({ date }: { date: string }) {
 export default function App() {
   const [days, setDays] = useState<ApiResult<DayInfo[]> | null>(null)
   const [selectedDate, setSelectedDate] = useState('')
+  const [weight, setWeight] = useState(1)
   const selectedDay = days?.ok ? days.data.find((day) => day.date === selectedDate) : undefined
 
   useEffect(() => {
     let active = true
-    void api.days().then((response) => {
-      if (!active) return
+    const controller = new AbortController()
+    void api.days(controller.signal).then((response) => {
+      if (!active || (!response.ok && response.error.kind === 'aborted')) return
       if (!response.ok) {
         setDays(response)
         return
@@ -83,7 +97,7 @@ export default function App() {
       setSelectedDate(available.find((day) => day.date === '2024-07-02')?.date ?? available[0]?.date ?? '')
       setDays({ ok: true, data: available })
     })
-    return () => { active = false }
+    return () => { active = false; controller.abort() }
   }, [])
 
   return (
@@ -98,7 +112,7 @@ export default function App() {
         <section className="day-toolbar" aria-label="Day selection">
           <div><h2>Daily overview</h2><p className="muted">Review the planner’s cost and carbon results.</p></div>
           {!days && <p role="status">Loading days…</p>}
-          {days && !days.ok && <p className="warning" role="alert">{days.error.message}</p>}
+          {days && !days.ok && days.error.kind !== 'aborted' && <p className="warning" role="alert">{days.error.message}</p>}
           {days?.ok && (days.data.length > 0 ? (
             <div className="day-field">
               <label htmlFor="planning-day">Planning day</label>
@@ -112,7 +126,8 @@ export default function App() {
         <div className="workspace">
           <section className="panel schedule-panel" aria-labelledby="schedule-title">
             <div className="panel-heading"><h2 id="schedule-title">Schedule dashboard</h2><span className="muted">Daily plan</span></div>
-            {selectedDate && <PlanPanel date={selectedDate} />}
+            <WeightSlider value={weight} onChange={setWeight} />
+            {selectedDate && <PlanPanel date={selectedDate} weight={weight} />}
           </section>
           <aside className="panel chat-panel" aria-labelledby="chat-title">
             <p className="eyebrow">PLAN EXPLAINER</p><h2 id="chat-title">Ask about your plan</h2>

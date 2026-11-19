@@ -74,6 +74,13 @@ footer { padding: 1rem 0; font-size: .75rem; color: var(--muted); }
 }
 
 .plan-results, .schedule-charts, .chart-plots { min-width: 0; max-width: 100%; }
+.weight-control { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: .35rem; margin-bottom: 1rem; }
+.weight-control input { width: 100%; min-width: 0; max-width: 100%; min-height: 44px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+.weight-control input:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; border-radius: .3rem; }
+.weight-endpoints { display: flex; justify-content: space-between; gap: .75rem; font-size: .8rem; }
+.weight-value { margin: 0; font-size: .85rem; font-variant-numeric: tabular-nums; }
+.weight-note { margin: .25rem 0 0; }
+.chart-plots, .summary-cards { transition: opacity 300ms ease; }
 .plan-results.is-stale .chart-plots { opacity: .45; }
 .plan-results.is-stale .summary-cards { opacity: .6; }
 .plan-status { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; min-width: 0; }
@@ -104,6 +111,7 @@ footer { padding: 1rem 0; font-size: .75rem; color: var(--muted); }
 .diagnostic-label { background: #fff0ed; color: #8a271a; border: 2px solid #b63c2c; border-radius: .4rem; padding: .75rem; font-size: .85rem; font-weight: 750; }
 .diagnostic-charts .chart-plots { opacity: .6; }
 @media (prefers-reduced-motion: reduce) {
+  .chart-plots, .summary-cards { transition: none; }
   .chart-frame .recharts-tooltip-wrapper { transition: none !important; }
 }
 @media (prefers-color-scheme: dark) {

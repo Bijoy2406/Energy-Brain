@@ -1,4 +1,4 @@
-import { useId } from 'react'
+import { useId, useMemo } from 'react'
 import {
   Area, AreaChart, CartesianGrid, Line, LineChart, ReferenceArea,
   ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -6,6 +6,7 @@ import {
 import type { PlanResponse } from '../api/client'
 import { buildScheduleRows, formatKw, formatKwh, outageBlocks, peakSlots } from './scheduleData'
 import type { ScheduleRow } from './scheduleData'
+import { useReducedMotion } from '../hooks/useReducedMotion'
 
 const sources = [
   { key: 'solar', name: 'Solar', color: '#d69a00' },
@@ -32,11 +33,16 @@ function SlotTooltip({ row, battery }: { row?: ScheduleRow; battery: boolean }) 
 
 export default function ScheduleCharts({ response }: { response: PlanResponse }) {
   const id = useId()
-  const rows = buildScheduleRows(response)
-  const data = rows.map((row, slot) => ({ ...row, slot }))
-  // Extend the last slot's step to its end boundary without inventing a slot
-  // or changing the planner's rows, totals, or end-of-slot SoC values.
-  if (rows.length > 0) data.push({ ...rows[rows.length - 1], slot: rows.length })
+  const reducedMotion = useReducedMotion()
+  const animation = { isAnimationActive: !reducedMotion, animationBegin: 0, animationDuration: 300, animationEasing: 'ease' as const }
+  const rows = useMemo(() => buildScheduleRows(response), [response])
+  const data = useMemo(() => {
+    const points = rows.map((row, slot) => ({ ...row, slot }))
+    // Extend the last slot's step to its end boundary without inventing a slot
+    // or changing the planner's rows, totals, or end-of-slot SoC values.
+    if (rows.length > 0) points.push({ ...rows[rows.length - 1], slot: rows.length })
+    return points
+  }, [rows])
   const outages = outageBlocks(rows)
   const peakTimes = new Set(peakSlots(rows).map((row) => row.time))
   const peaks = outageBlocks(rows.map((row) => ({ ...row, outage: peakTimes.has(row.time) })))
@@ -80,10 +86,10 @@ export default function ScheduleCharts({ response }: { response: PlanResponse })
                 fill="var(--peak-shade)" fillOpacity={0.18} />)}
               {outageAreas}
               {sources.map((source) => <Area key={source.key} type="stepAfter" dataKey={source.key} name={source.name}
-                stackId="supply" stroke={source.color} fill={source.color} fillOpacity={0.65} isAnimationActive={false} />)}
+                stackId="supply" stroke={source.color} fill={source.color} fillOpacity={0.65} {...animation} />)}
               <Line type="stepAfter" dataKey="demand" name="Demand incl. battery charging" stroke="var(--chart-demand)"
-                strokeWidth={2} strokeDasharray="6 3" dot={false} isAnimationActive={false} />
-              <Tooltip content={({ active, payload }) => <SlotTooltip row={active ? payload?.[0]?.payload as ScheduleRow : undefined} battery={false} />} />
+                strokeWidth={2} strokeDasharray="6 3" dot={false} {...animation} />
+              <Tooltip isAnimationActive={!reducedMotion} content={({ active, payload }) => <SlotTooltip row={active ? payload?.[0]?.payload as ScheduleRow : undefined} battery={false} />} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -101,8 +107,8 @@ export default function ScheduleCharts({ response }: { response: PlanResponse })
               {outageAreas}
               <ReferenceLine y={min} stroke="var(--muted)" strokeDasharray="5 4" label={{ value: 'Min', position: 'insideBottomRight', fill: 'var(--muted)', fontSize: 11 }} />
               <ReferenceLine y={max} stroke="var(--muted)" strokeDasharray="5 4" label={{ value: 'Max', position: 'insideTopRight', fill: 'var(--muted)', fontSize: 11 }} />
-              <Line type="linear" dataKey="soc" name="Battery SoC (end of slot)" stroke="#009e83" strokeWidth={2} dot={false} isAnimationActive={false} />
-              <Tooltip content={({ active, payload }) => <SlotTooltip row={active ? payload?.[0]?.payload as ScheduleRow : undefined} battery />} />
+              <Line type="linear" dataKey="soc" name="Battery SoC (end of slot)" stroke="#009e83" strokeWidth={2} dot={false} {...animation} />
+              <Tooltip isAnimationActive={!reducedMotion} content={({ active, payload }) => <SlotTooltip row={active ? payload?.[0]?.payload as ScheduleRow : undefined} battery />} />
             </LineChart>
           </ResponsiveContainer>
         </div>
