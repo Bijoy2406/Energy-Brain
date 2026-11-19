@@ -131,6 +131,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/pareto": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cost versus CO2 Pareto frontier
+         * @description Solve the fixed weight grid sequentially. Totals are planned at P50, before settlement.
+         *     Unsafe plans remain visible but cannot enter the frontier. Cache hits are free.
+         */
+        get: operations["pareto_pareto_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -674,6 +695,88 @@ export interface components {
              */
             end: string;
         };
+        /** ParetoPoint */
+        ParetoPoint: {
+            /** Weight */
+            weight: number;
+            /** Cost Bdt */
+            cost_bdt: number;
+            /** Co2 Kg */
+            co2_kg: number;
+            /** Generator Hours */
+            generator_hours: number;
+            /** Diesel Litres */
+            diesel_litres: number;
+            /** Status */
+            status: string;
+            /** Safe */
+            safe: boolean;
+            /** Risk Ok */
+            risk_ok: boolean;
+            /** Replans */
+            replans: number;
+            /** Efficient */
+            efficient: boolean;
+            /** Group */
+            group: number;
+            /** Same As Weight */
+            same_as_weight: number | null;
+            /**
+             * Plan Cached
+             * @description plan cache hit when this Pareto body was computed
+             */
+            plan_cached: boolean;
+        };
+        /** ParetoResponse */
+        ParetoResponse: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Weights Meaning
+             * @default 1 = cheapest, 0 = cleanest
+             * @constant
+             */
+            weights_meaning: "1 = cheapest, 0 = cleanest";
+            /**
+             * Basis
+             * @default planned totals at the P50 forecast, before settlement against actuals
+             * @constant
+             */
+            basis: "planned totals at the P50 forecast, before settlement against actuals";
+            /** Points */
+            points: components["schemas"]["ParetoPoint"][];
+            /**
+             * Frontier
+             * @description lowest-weight representative of each efficient group, sorted by cost ascending
+             */
+            frontier: components["schemas"]["ParetoPoint"][];
+            forecast_fallback: components["schemas"]["FallbackInfo"];
+            signal_fallback: components["schemas"]["FallbackInfo"];
+            /** Banners */
+            banners: string[];
+            /** Forecast Source */
+            forecast_source: string;
+            /** Cached */
+            cached: boolean;
+            /**
+             * Computed At
+             * Format: date-time
+             */
+            computed_at: string;
+            /**
+             * Solve Seconds
+             * @description total wall time of this request, including cache waits
+             */
+            solve_seconds: number;
+            /**
+             * Distinct Points
+             * @description distinct cost/CO2 groups among safe plans
+             */
+            distinct_points: number;
+        };
         /**
          * PlanRequest
          * @description A day and a cost/carbon weight.
@@ -1166,6 +1269,56 @@ export interface operations {
                 };
             };
             /** @description all LLM slots busy, or no forecast could be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    pareto_pareto_get: {
+        parameters: {
+            query: {
+                /** @description planning day, YYYY-MM-DD, from 2022-01-01 to tomorrow (site time) */
+                date: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ParetoResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description too many uncached computations */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description no forecast could be made (not even sample data) */
             503: {
                 headers: {
                     [name: string]: unknown;

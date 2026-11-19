@@ -40,6 +40,7 @@ reserved, and the OpenAPI schema is unchanged. See [deployment](deploy.md) for t
 | --- | --- | --- | --- |
 | GET | `/days` | – | `DaysResponse`: demo days + tomorrow |
 | POST | `/plan` | `{"date": "YYYY-MM-DD", "w": 0..1}` | `PlanResponse` |
+| GET | `/pareto` | `?date=YYYY-MM-DD` | `ParetoResponse`: sampled cost/CO2 frontier |
 | GET | `/backtest` | `?include_sha=false` | `BacktestSummary` |
 | GET | `/backtest/days` | `?weight=<0.5\|1\|0>` (default: headline weight) | `BacktestDaysResponse` |
 | POST | `/explain` | `{"date", "w", "question"}` | `ExplainResponse` |
@@ -125,6 +126,74 @@ curl -s localhost:8000/plan -H 'Content-Type: application/json' -d '{"date": "20
 - **Speed:** the first plan after startup loads the data and models (about 1 s), a new (date, w) takes about
   0.1–0.3 s, and a cached one a few milliseconds (`cached: true`). The demo days at w = 0.5, 0 and 1 are planned
   in the background at startup.
+
+### `GET /pareto`
+
+Compare planned cost and CO2 across the fixed weights `0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3,
+0.4, 0.5, 0.75, 1`. These use the same plans as the slider and `/plan`. Dates have the same validation
+and range as `/plan`: 2022-01-01 through tomorrow in Asia/Dhaka. No available forecast returns the same
+503 `forecast_unavailable` body as `/plan`.
+
+```bash
+curl -s 'localhost:8000/pareto?date=2024-07-02'
+```
+
+Illustrative response, shortened to one point (the actual response always has eleven):
+
+```json
+{
+  "date": "2024-07-02",
+  "weights_meaning": "1 = cheapest, 0 = cleanest",
+  "basis": "planned totals at the P50 forecast, before settlement against actuals",
+  "points": [
+    {"weight": 0.0, "cost_bdt": 152702.707, "co2_kg": 9092.852,
+     "generator_hours": 2.0, "diesel_litres": 100.0, "status": "optimal",
+     "safe": true, "risk_ok": true, "replans": 0, "efficient": true,
+     "group": 0, "same_as_weight": null, "plan_cached": false}
+  ],
+  "frontier": [
+    {"weight": 0.0, "cost_bdt": 152702.707, "co2_kg": 9092.852,
+     "generator_hours": 2.0, "diesel_litres": 100.0, "status": "optimal",
+     "safe": true, "risk_ok": true, "replans": 0, "efficient": true,
+     "group": 0, "same_as_weight": null, "plan_cached": false}
+  ],
+  "forecast_fallback": {"used": false, "note": null, "fields": null},
+  "signal_fallback": {"used": false, "note": null, "fields": null},
+  "banners": [], "forecast_source": "model", "cached": false,
+  "computed_at": "2026-11-19T16:20:01.123456+06:00", "solve_seconds": 1.2,
+  "distinct_points": 1
+}
+```
+
+All totals come unchanged from `PlanResult.totals`; they describe the P50 forecast plan before settlement
+against actuals. On this site the grid CO2 factor is flat, so the frontier usually collapses to very few
+distinct points. Eleven weights do not imply eleven different operating choices. This is the frontier
+of the sampled weights, not an exhaustive enumeration of feasible schedules.
+
+- `points` is in weight order. `safe` uses `planner.is_safe`; `risk_ok` and `replans` retain the Risk verdict
+  and re-plan count. Unsafe or infeasible plans stay visible with `efficient: false`.
+- A safe point is efficient when no safe point has both cost and CO2 less than or equal to it and at least
+  one strictly smaller. Comparisons treat values as equal within relative tolerance `1e-6` (no absolute
+  tolerance). Risk failure alone does not exclude an otherwise safe point.
+- Groups are assigned in weight order, starting at 0, by comparing cost and CO2 with each group's first
+  member using that tolerance. `same_as_weight` is that first member's weight, or null for the first member.
+  `distinct_points` counts groups containing safe plans.
+- `frontier` contains **full point objects**, one per efficient group, sorted by ascending cost. The
+  representative is the lowest-weight efficient safe member; an unsafe member cannot represent a group.
+  If no plan is safe, the frontier is empty and a banner says so.
+- Fallback metadata and warning text use the same source as `/plan`; banners include warnings from every
+  sampled plan, with duplicates removed. Show these warnings alongside the comparison.
+- A separate LRU holds 64 finished days with single-flight protection. `cached` means the whole body came
+  from that cache (including a concurrent computation). `computed_at` is the original completion time;
+  `plan_cached` records plan-cache reuse during that original computation, and stays unchanged on a Pareto
+  cache hit. `solve_seconds` measures this request's wall time, including waits and cache lookup.
+- Uncached computations are limited to **6 per minute per client IP and 30 per minute overall**, using a
+  separate instance of the existing sliding-window limiter. Cache hits and concurrent followers are free.
+  A limit returns 429 `rate_limited`, `retry_after_s`, and `Retry-After`, like `/explain`.
+- Startup warm-up computes Pareto results after the existing warm-up plans in the same background thread.
+  `EB_WARMUP=0` disables both. Warm-up bypasses client rate limits; failures are logged and never stop the app.
+  No new settings are required. `/health` retains its existing schema and plan-cache stats; it does not
+  expose Pareto-cache stats. Warm-up `planned` and `total` still count the initial plans.
 
 ### `GET /backtest` and `GET /backtest/days`
 

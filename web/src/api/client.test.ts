@@ -50,6 +50,15 @@ describe('API client', () => {
     expect(fetchMock).toHaveBeenCalledWith('http://api.test/days', expect.objectContaining({ method: 'GET' }))
   })
 
+  it('gets the Pareto frontier by date with an optional cancellation signal', async () => {
+    const body = { date: '2024-07-02', points: [], frontier: [], cached: false }
+    const fetchMock = respond(body)
+    const { signal } = new AbortController()
+    expect(await api.pareto('2024-07-02', signal)).toEqual({ ok: true, data: body })
+    expect(fetchMock).toHaveBeenCalledWith('http://api.test/pareto?date=2024-07-02',
+      expect.objectContaining({ method: 'GET', signal }))
+  })
+
   it('maps FastAPI validation errors with field locations', async () => {
     const details = [{ loc: ['body', 'w'], msg: 'Must be at most 1', type: 'less_than_equal' }]
     respond({ detail: details }, 422)

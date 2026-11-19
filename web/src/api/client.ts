@@ -81,6 +81,8 @@ export function createApiClient(
   return {
     days: (signal?: AbortSignal) => request<Schemas['DaysResponse']>('/days', 'GET', undefined, signal),
     plan: (body: Schemas['PlanRequest'], signal?: AbortSignal) => request<PlanResponse>('/plan', 'POST', body, signal),
+    pareto: (date: string, signal?: AbortSignal) =>
+      request<Schemas['ParetoResponse']>(`/pareto?date=${encodeURIComponent(date)}`, 'GET', undefined, signal),
     backtest: (query?: operations['backtest_backtest_get']['parameters']['query'], signal?: AbortSignal) =>
       request<Schemas['BacktestSummary']>(query?.include_sha === undefined
         ? '/backtest' : `/backtest?include_sha=${query.include_sha}`, 'GET', undefined, signal),
