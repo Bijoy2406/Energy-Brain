@@ -16,6 +16,7 @@ import HeaderAtmosphere from './components/HeaderAtmosphere'
 import ShinyText from './fx/ShinyText'
 import { useReducedMotion } from './hooks/useReducedMotion'
 import { useDashboardMotion } from './hooks/useDashboardMotion'
+import ThemeToggle from './components/ThemeToggle'
 import './App.css'
 
 function PlanSummary({ plan, source, selectedDate, onSeeLimits }: { plan: PlanResponse; source: BacktestData; selectedDate: string; onSeeLimits: () => void }) {
@@ -155,13 +156,14 @@ export default function App() {
         <div className="header-inner container-wrap">
           <div className="brand-cluster">
             <h1 className="brand-heading">
-              <ShinyText className="brand-sheen" color="transparent" shineColor="#ffffff" speed={3} delay={5} shineWidth={18} disabled={reducedMotion}>
+              <ShinyText className="brand-sheen" color="transparent" shineColor="var(--on-brand)" speed={3} delay={5} shineWidth={18} disabled={reducedMotion}>
                 <img src="/logo-full-light.png" alt="Energy Brain" className="brand-logo" />
               </ShinyText>
             </h1>
             <span className="brand-subtitle">DHAKA MICROGRID · AI DISPATCH</span>
           </div>
           <div className="header-meta">
+            <ThemeToggle />
             <span className="meta-pill">1,000 kWh BESS</span>
             <span className="meta-pill">96 Slots · 15m</span>
             <span className="replay-label"><span className="replay-dot" aria-hidden="true" />Historical replay</span>

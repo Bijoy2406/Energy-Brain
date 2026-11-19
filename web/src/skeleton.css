@@ -2,7 +2,7 @@
   display: block;
   position: relative;
   overflow: hidden;
-  background: #e6edf6;
+  background: var(--skeleton-base);
   border-radius: 6px;
 }
 
@@ -11,7 +11,7 @@
   position: absolute;
   inset: 0;
   transform: translateX(-100%);
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.75), transparent);
+  background: linear-gradient(90deg, transparent, var(--skeleton-shine), transparent);
   animation: skeleton-shimmer 1.4s ease-in-out infinite;
 }
 
@@ -34,9 +34,9 @@
   display: grid;
   gap: 10px;
   padding: 16px;
-  border: 1px solid rgba(11, 37, 69, 0.08);
+  border: 1px solid var(--skeleton-line);
   border-radius: 14px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .skeleton-cards {
@@ -60,7 +60,7 @@
 
 .skeleton-chart-panel:last-child .skeleton-chart {
   height: 110px;
-  background: linear-gradient(to top, #e6edf6 2px, transparent 2px);
+  background: linear-gradient(to top, var(--skeleton-base) 2px, transparent 2px);
 }
 
 .skeleton-bar {
@@ -71,8 +71,8 @@
 .skeleton-plot {
   position: relative;
   height: 220px;
-  border-left: 2px solid #e6edf6;
-  border-bottom: 2px solid #e6edf6;
+  border-left: 2px solid var(--skeleton-base);
+  border-bottom: 2px solid var(--skeleton-base);
 }
 
 .skeleton-dot {
@@ -94,7 +94,7 @@
 .skeleton-status {
   margin: 0 0 6px;
   font-size: 13px;
-  color: #64748b;
+  color: var(--muted);
 }
 
 .skeleton-select {
