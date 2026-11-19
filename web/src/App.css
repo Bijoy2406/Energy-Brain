@@ -12,6 +12,8 @@
   --chart-demand: #243c32;
   --outage-shade: #737d88;
   --peak-shade: #d6a100;
+  --backtest-outage: #9b4b15;
+  --backtest-other: #216e80;
 }
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 0; overflow-wrap: anywhere; }
@@ -169,4 +171,42 @@ footer { padding: 1rem 0; font-size: .75rem; color: var(--muted); }
 @media (prefers-color-scheme: dark) {
   .chat-composer-actions button { color: #142b1d; }
   .source-anchor mark { background: #594b19; color: #fff0aa; }
+}
+
+[hidden] { display: none !important; }
+.page-tabs, .segmented-control { display: flex; flex-wrap: wrap; gap: .5rem; min-width: 0; }
+.page-tabs { margin: 1rem 0; border-bottom: 1px solid var(--line); padding-bottom: .75rem; }
+.page-tabs button, .segmented-control button { min-width: 44px; min-height: 44px; max-width: 100%; padding: .65rem .8rem; border: 1px solid var(--line); border-radius: .45rem; font: inherit; font-size: .9rem; color: inherit; background: var(--surface); cursor: pointer; overflow-wrap: anywhere; }
+.page-tabs button[aria-selected="true"], .segmented-control button[aria-pressed="true"] { border: 2px solid var(--accent); font-weight: 700; text-decoration: underline; text-underline-offset: .25em; }
+.page-tabs button:focus-visible, .segmented-control button:focus-visible, [role="tabpanel"]:focus-visible, .measurement summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.backtest-view { display: grid; gap: 1rem; min-width: 0; }
+.backtest-view > *, [role="tabpanel"] { min-width: 0; max-width: 100%; }
+.backtest-weights > button { flex: 1 1 12rem; }
+.backtest-caution { margin: 0; font-size: .85rem; font-weight: 650; }
+.comparison-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.comparison-result { font-size: clamp(1.05rem, 2vw, 1.4rem); font-weight: 650; font-variant-numeric: tabular-nums; margin-bottom: .5rem; }
+.comparison-facts { padding-left: 1.2rem; margin-bottom: 0; }
+.comparison-facts li { margin-top: .6rem; }
+.backtest-caveats { margin-bottom: 0; font-size: .85rem; }
+.forecast-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: 1rem; margin-bottom: 1rem; }
+.forecast-metrics > div { min-width: 0; }
+.measurement summary { min-height: 44px; padding: .65rem 0; cursor: pointer; font-weight: 700; }
+.measurement h3 { margin-top: 1rem; }
+.measurement ul { padding-left: 1.25rem; }
+.measurement code { white-space: pre-wrap; overflow-wrap: anywhere; }
+.provenance-list > div { margin-bottom: .75rem; }
+.provenance-list dd { font-size: .85rem; font-weight: 400; }
+.daily-chart-panel > .segmented-control { margin: .75rem 0; }
+.daily-cost-chart { height: clamp(280px, 42vh, 440px); }
+.backtest-outage-swatch { background: repeating-linear-gradient(135deg, var(--backtest-outage) 0 3px, var(--surface) 3px 5px); }
+.backtest-other-swatch { background: var(--backtest-other); }
+.same-day-card { margin-bottom: 1rem; }
+.comparison-table { border-collapse: collapse; table-layout: fixed; width: 100%; font-size: .8rem; }
+.comparison-table caption { text-align: left; margin-bottom: .5rem; color: var(--muted); }
+.comparison-table :is(th, td) { border-bottom: 1px solid var(--line); text-align: left; padding: .6rem .25rem; overflow-wrap: anywhere; vertical-align: top; font-variant-numeric: tabular-nums; }
+.comparison-table :is(th, td):first-child { width: 48%; }
+.daily-saving { display: block; margin-top: .4rem; font-weight: 400; }
+@media (max-width: 699px) { .comparison-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (prefers-color-scheme: dark) {
+  :root { --backtest-outage: #edb177; --backtest-other: #7bb7d0; }
 }

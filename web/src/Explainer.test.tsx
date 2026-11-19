@@ -4,6 +4,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import App from './App'
 import type { components } from './api/generated'
 import { days, planFixture } from './test/fixtures'
+import { backtestDaysFixture } from './test/backtestFixture'
 
 type Answer = components['schemas']['ExplainResponse']
 const questions = [
@@ -29,6 +30,7 @@ function answer(overrides: Partial<Answer> = {}): Answer {
 }
 function mockApi(explain: (init: RequestInit) => Promise<Response> = async () => json(answer()), plan = planFixture()) {
   const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+    if (url.includes('/backtest/days')) return json(backtestDaysFixture())
     if (url.endsWith('/days')) return json(days)
     if (url.endsWith('/plan')) return json(plan)
     if (url.endsWith('/explain')) return explain(init)
@@ -58,7 +60,7 @@ it('sends exact suggestions with selected date and solved weight; shows verified
   const mark = screen.getByRole('button', { name: '269.8 kW: get_slot -> generator_kw (number)' })
   expect(mark).toHaveAttribute('tabindex', '0')
   expect(mark).toHaveAttribute('title', 'get_slot -> generator_kw (number)')
-  expect(input).toHaveFocus()
+  await waitFor(() => expect(input).toHaveFocus())
   expect(mark.tagName).toBe('MARK')
   act(() => mark.focus())
   expect(screen.getByRole('tooltip')).toHaveTextContent('get_slot -> generator_kw (number)')

@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { days, planFixture } from './test/fixtures'
+import { backtestDaysFixture } from './test/backtestFixture'
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -10,6 +11,7 @@ function json(body: unknown, status = 200) {
 
 function mockApi(plan = planFixture(), dayList = days) {
   const fetchMock = vi.fn(async (url: string) => {
+    if (url.includes('/backtest/days')) return json(backtestDaysFixture())
     if (url.endsWith('/days')) return json(dayList)
     if (url.endsWith('/plan')) return json(plan)
     throw new Error(`Unexpected URL: ${url}`)
@@ -275,11 +277,11 @@ describe('cost and carbon control', () => {
     await tick(100)
     fireEvent.change(slider, { target: { value: '0.3' } })
     await tick(249)
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock.mock.calls.filter(([url]) => !url.includes('/backtest/'))).toHaveLength(2)
     expect(screen.getByText('152,703')).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Plan results' })).toHaveClass('is-stale')
     await tick(1)
-    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(fetchMock.mock.calls.filter(([url]) => !url.includes('/backtest/'))).toHaveLength(3)
     expect(fetchMock).toHaveBeenLastCalledWith('http://localhost:8000/plan', expect.objectContaining({
       body: '{"date":"2024-07-02","w":0.3}',
     }))
@@ -362,9 +364,9 @@ describe('cost and carbon control', () => {
     fetchMock.mockImplementation(async () => json(next))
     fireEvent.change(slider, { target: { value: '0.3' } })
     await tick()
-    expect(screen.getByText('100')).toBeInTheDocument()
-    await tick(150)
     const cards = screen.getByText('Cost · BDT').closest('dl')!
+    expect(within(cards).getByText('100')).toBeInTheDocument()
+    await tick(150)
     const values = within(cards).getAllByRole('definition').map((item) => Number(item.textContent))
     expect(values[0]).toBeGreaterThan(100)
     expect(values[0]).toBeLessThan(201)
