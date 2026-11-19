@@ -226,3 +226,23 @@ footer { padding: 1rem 0; font-size: .75rem; color: var(--muted); }
 @media (prefers-color-scheme: dark) {
   :root { --backtest-outage: #edb177; --backtest-other: #7bb7d0; }
 }
+
+.tradeoff-view { display: grid; gap: 1rem; min-width: 0; }
+.tradeoff-view :is(p, h2, h3, button, label, summary, caption) { overflow-wrap: anywhere; }
+.tradeoff-view > *, .tradeoff-results > * { min-width: 0; max-width: 100%; }
+.tradeoff-chart { height: clamp(260px, 40vh, 420px); }
+.tradeoff-view button:not(.tradeoff-dot) { min-height: 44px; max-width: 100%; padding: .65rem .8rem; border: 1px solid var(--line); border-radius: .45rem; color: var(--chart-demand); background: var(--surface); font: inherit; cursor: pointer; }
+.tradeoff-view button:disabled { opacity: .55; cursor: not-allowed; }
+.tradeoff-view :is(button, select, summary):focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.tradeoff-dot { cursor: pointer; }
+.tradeoff-dot:focus { outline: none; }
+.tradeoff-dot:focus .plan-dot { stroke: var(--chart-demand); stroke-width: 4px; }
+.tradeoff-dot:focus .slider-ring { stroke-dasharray: 3 2; }
+.tradeoff-summary { font-weight: 650; }
+.tradeoff-selection { border: 2px solid var(--accent); border-radius: .5rem; padding: 1rem; margin: 1rem 0; }
+.tradeoff-table summary { min-height: 44px; padding: .65rem 0; cursor: pointer; font-weight: 650; }
+.tradeoff-table table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: clamp(.65rem, 1.5vw, .85rem); }
+.tradeoff-table :is(th, td) { text-align: left; vertical-align: top; padding: .65rem .2rem; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.tradeoff-table caption { text-align: left; padding: .5rem 0; }
+.tradeoff-notes { border-top: 1px solid var(--line); margin-top: 1rem; padding-top: 1rem; font-size: .85rem; color: var(--muted); }
+.tradeoff-results.is-stale > :not(:first-child) { opacity: .55; }

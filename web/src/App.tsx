@@ -7,6 +7,7 @@ import WeightSlider from './components/WeightSlider'
 import AnimatedValue from './components/AnimatedValue'
 import ExplainerPanel from './components/ExplainerPanel'
 import BacktestView from './components/BacktestView'
+import TradeoffView from './components/TradeoffView'
 import SameDayComparison from './components/SameDayComparison'
 import { createBacktestData } from './backtest/data'
 import type { BacktestData } from './backtest/data'
@@ -85,11 +86,15 @@ function PlanPanel({ date, weight, onPlan, source, onSeeLimits }: { date: string
   </>
 }
 
+type Tab = 'plan' | 'backtest' | 'tradeoff'
+const tabOrder: Tab[] = ['plan', 'tradeoff', 'backtest']
+const hashTab = (): Tab => window.location.hash === '#tradeoff' ? 'tradeoff' : ['#backtest', '#limits'].includes(window.location.hash) ? 'backtest' : 'plan'
+
 export default function App() {
   const [backtestData] = useState(createBacktestData)
   const [tabs, setTabs] = useState(() => {
-    const backtest = ['#backtest', '#limits'].includes(window.location.hash)
-    return { backtest, visited: backtest, limitsRequest: window.location.hash === '#limits' ? 1 : 0 }
+    const tab = hashTab()
+    return { tab, visited: new Set<Tab>(['plan', tab]), limitsRequest: window.location.hash === '#limits' ? 1 : 0 }
   })
   const tabButtons = useRef<(HTMLButtonElement | null)[]>([])
   const [days, setDays] = useState<ApiResult<DayInfo[]> | null>(null)
@@ -100,20 +105,20 @@ export default function App() {
 
   useEffect(() => {
     const syncHash = () => setTabs((previous) => {
-      const backtest = ['#backtest', '#limits'].includes(window.location.hash)
-      return { backtest, visited: previous.visited || backtest, limitsRequest: window.location.hash === '#limits' ? previous.limitsRequest + 1 : 0 }
+      const tab = hashTab()
+      return { tab, visited: new Set([...previous.visited, tab]), limitsRequest: window.location.hash === '#limits' ? previous.limitsRequest + 1 : 0 }
     })
     window.addEventListener('hashchange', syncHash)
     return () => window.removeEventListener('hashchange', syncHash)
   }, [])
 
-  function selectTab(backtest: boolean) {
-    setTabs((previous) => ({ backtest, visited: previous.visited || backtest, limitsRequest: 0 }))
-    window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${backtest ? '#backtest' : ''}`)
+  function selectTab(tab: Tab) {
+    setTabs((previous) => ({ tab, visited: new Set([...previous.visited, tab]), limitsRequest: 0 }))
+    window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${tab === 'plan' ? '' : `#${tab}`}`)
   }
 
   function seeLimits() {
-    setTabs((previous) => ({ backtest: true, visited: true, limitsRequest: previous.limitsRequest + 1 }))
+    setTabs((previous) => ({ tab: 'backtest', visited: new Set([...previous.visited, 'backtest' as const]), limitsRequest: previous.limitsRequest + 1 }))
     window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#limits`)
   }
 
@@ -143,19 +148,19 @@ export default function App() {
       <p className="honesty-strip">Synthetic load, simulated PV, synthetic outages. Historical replay.</p>
       <main>
         <div className="page-tabs" role="tablist" aria-label="Energy Brain views">
-          {["Today's plan", 'Backtest results'].map((label, index) => <button key={label} type="button" role="tab"
-            id={index === 0 ? 'plan-tab' : 'backtest-tab'} aria-controls={index === 0 ? 'plan-panel' : 'backtest-panel'}
-            aria-selected={tabs.backtest === (index === 1)} tabIndex={tabs.backtest === (index === 1) ? 0 : -1}
+          {["Today's plan", 'Trade-off', 'Backtest results'].map((label, index) => <button key={label} type="button" role="tab"
+            id={`${tabOrder[index]}-tab`} aria-controls={`${tabOrder[index]}-panel`}
+            aria-selected={tabs.tab === tabOrder[index]} tabIndex={tabs.tab === tabOrder[index] ? 0 : -1}
             ref={(element) => { tabButtons.current[index] = element }}
-            onClick={() => selectTab(index === 1)} onKeyDown={(event) => {
+            onClick={() => selectTab(tabOrder[index])} onKeyDown={(event) => {
               if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
               event.preventDefault()
-              const next = event.key === 'Home' ? 0 : event.key === 'End' ? 1 : 1 - index
-              selectTab(next === 1)
+              const next = event.key === 'Home' ? 0 : event.key === 'End' ? 2 : (index + (event.key === 'ArrowRight' ? 1 : 2)) % 3
+              selectTab(tabOrder[next])
               tabButtons.current[next]?.focus()
             }}>{label}</button>)}
         </div>
-        <div role="tabpanel" id="plan-panel" aria-labelledby="plan-tab" hidden={tabs.backtest} tabIndex={0}>
+        <div role="tabpanel" id="plan-panel" aria-labelledby="plan-tab" hidden={tabs.tab !== 'plan'} tabIndex={0}>
         <section className="day-toolbar" aria-label="Day selection">
           <div><h2>Daily overview</h2><p className="muted">Review the planner’s cost and carbon results.</p></div>
           {!days && <p role="status">Loading days…</p>}
@@ -174,13 +179,18 @@ export default function App() {
           <section className="panel schedule-panel" aria-labelledby="schedule-title">
             <div className="panel-heading"><h2 id="schedule-title">Schedule dashboard</h2><span className="muted">Daily plan</span></div>
             <WeightSlider value={weight} onChange={setWeight} />
+            <button type="button" className="limits-link" onClick={() => selectTab('tradeoff')}>See the trade-off curve</button>
             {selectedDate && <PlanPanel date={selectedDate} weight={weight} onPlan={setShownPlan} source={backtestData} onSeeLimits={seeLimits} />}
           </section>
           <ExplainerPanel date={selectedDate} weight={shownPlan?.weight ?? weight} />
         </div>
         </div>
-        <div role="tabpanel" id="backtest-panel" aria-labelledby="backtest-tab" hidden={!tabs.backtest} tabIndex={0}>
-          {tabs.visited && <BacktestView source={backtestData} limitsRequest={tabs.backtest ? tabs.limitsRequest : 0} onSeeLimits={seeLimits} />}
+        <div role="tabpanel" id="tradeoff-panel" aria-labelledby="tradeoff-tab" hidden={tabs.tab !== 'tradeoff'} tabIndex={0}>
+          {tabs.visited.has('tradeoff') && <TradeoffView date={selectedDate} days={days?.ok ? days.data : []} weight={weight}
+            active={tabs.tab === 'tradeoff'} onDateChange={setSelectedDate} onUseSetting={(value) => { setWeight(value); selectTab('plan') }} />}
+        </div>
+        <div role="tabpanel" id="backtest-panel" aria-labelledby="backtest-tab" hidden={tabs.tab !== 'backtest'} tabIndex={0}>
+          {tabs.visited.has('backtest') && <BacktestView source={backtestData} limitsRequest={tabs.tab === 'backtest' ? tabs.limitsRequest : 0} onSeeLimits={seeLimits} />}
         </div>
       </main>
       <footer>Energy Brain · Site time: Asia/Dhaka</footer>
