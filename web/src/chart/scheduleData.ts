@@ -1,4 +1,5 @@
 import type { PlanResponse } from '../api/client'
+export { formatBdt, formatKg, formatHours, formatKwh, formatKw } from '../formatting'
 
 export interface ScheduleRow {
   time: string
@@ -15,14 +16,6 @@ export interface ScheduleRow {
 const siteTime = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Asia/Dhaka', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
 })
-const integer = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
-const decimal = new Intl.NumberFormat('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
-
-export const formatBdt = (value: number) => integer.format(value)
-export const formatKg = (value: number) => integer.format(value)
-export const formatHours = (value: number) => decimal.format(value)
-export const formatKwh = (value: number) => integer.format(value)
-export const formatKw = (value: number) => decimal.format(value)
 
 export function buildScheduleRows(response: PlanResponse): ScheduleRow[] {
   const { schedule, start } = response.plan
