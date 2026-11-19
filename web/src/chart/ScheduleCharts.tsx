@@ -9,10 +9,10 @@ import type { ScheduleRow } from './scheduleData'
 import { useReducedMotion } from '../hooks/useReducedMotion'
 
 const sources = [
-  { key: 'solar', name: 'Solar', color: '#d69a00' },
-  { key: 'batteryDischarge', name: 'Battery discharge', color: '#009e83' },
-  { key: 'grid', name: 'Grid import', color: '#0072b2' },
-  { key: 'generator', name: 'Generator', color: '#d55e40' },
+  { key: 'solar', name: 'Solar', color: '#F6AA1C' },
+  { key: 'batteryDischarge', name: 'Battery discharge', color: '#e26f24' },
+  { key: 'grid', name: 'Grid import', color: '#BC3908' },
+  { key: 'generator', name: 'Generator', color: '#941B0C' },
 ] as const
 
 function SlotTooltip({ row, battery }: { row?: ScheduleRow; battery: boolean }) {
@@ -107,7 +107,7 @@ export default function ScheduleCharts({ response }: { response: PlanResponse })
               {outageAreas}
               <ReferenceLine y={min} stroke="var(--muted)" strokeDasharray="5 4" label={{ value: 'Min', position: 'insideBottomRight', fill: 'var(--muted)', fontSize: 11 }} />
               <ReferenceLine y={max} stroke="var(--muted)" strokeDasharray="5 4" label={{ value: 'Max', position: 'insideTopRight', fill: 'var(--muted)', fontSize: 11 }} />
-              <Line type="linear" dataKey="soc" name="Battery SoC (end of slot)" stroke="#009e83" strokeWidth={2} dot={false} {...animation} />
+              <Line type="linear" dataKey="soc" name="Battery SoC (end of slot)" stroke="#F6AA1C" strokeWidth={2.5} dot={false} {...animation} />
               <Tooltip isAnimationActive={!reducedMotion} content={({ active, payload }) => <SlotTooltip row={active ? payload?.[0]?.payload as ScheduleRow : undefined} battery />} />
             </LineChart>
           </ResponsiveContainer>

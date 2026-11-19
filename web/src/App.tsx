@@ -141,11 +141,35 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="page-header">
-        <div className="brand-mark" aria-hidden="true">EB</div>
-        <div><p className="eyebrow">SITE ENERGY PLANNING</p><h1>Energy Brain</h1></div>
-        <span className="replay-label">Historical replay</span>
+        <div className="header-inner">
+          <div className="brand-cluster">
+            <div className="brand-mark" aria-hidden="true">
+              <svg viewBox="0 0 32 32" width="24" height="24" fill="none">
+                <circle cx="16" cy="16" r="13" stroke="currentColor" strokeWidth="1.5" strokeOpacity="0.45" />
+                <path
+                  d="M17.5 6.5L10 17.5h6l-1.5 8L22 14.5h-6l1.5-8z"
+                  fill="currentColor"
+                />
+              </svg>
+            </div>
+            <div className="brand-copy">
+              <p className="eyebrow">DHAKA MICROGRID · AI DISPATCH</p>
+              <h1>Energy Brain</h1>
+            </div>
+          </div>
+          <div className="header-meta">
+            <span className="meta-pill">1,000 kWh BESS</span>
+            <span className="meta-pill">96 Slots · 15m</span>
+            <span className="replay-label"><span className="replay-dot" aria-hidden="true" />Historical replay</span>
+          </div>
+        </div>
       </header>
-      <p className="honesty-strip">Synthetic load, simulated PV, synthetic outages. Historical replay.</p>
+      <p className="honesty-strip">
+        <svg className="strip-icon" viewBox="0 0 20 20" width="16" height="16" fill="currentColor" aria-hidden="true">
+          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+        </svg>
+        <span>Synthetic load, simulated PV, synthetic outages. Historical replay.</span>
+      </p>
       <main>
         <div className="page-tabs" role="tablist" aria-label="Energy Brain views">
           {["Today's plan", 'Trade-off', 'Backtest results'].map((label, index) => <button key={label} type="button" role="tab"
@@ -193,7 +217,42 @@ export default function App() {
           {tabs.visited.has('backtest') && <BacktestView source={backtestData} limitsRequest={tabs.tab === 'backtest' ? tabs.limitsRequest : 0} onSeeLimits={seeLimits} />}
         </div>
       </main>
-      <footer>Energy Brain · Site time: Asia/Dhaka</footer>
+      <footer className="site-footer">
+        <div className="footer-grid">
+          <div className="footer-brand">
+            <p className="footer-title">Dhaka Commercial Microgrid</p>
+            <p className="footer-desc">
+              Multi-agent dispatch optimizer orchestrating solar PV, battery energy storage, flexible HVAC/EV loads, and diesel backup.
+            </p>
+          </div>
+          <div className="footer-col">
+            <h3>Intelligence Stack</h3>
+            <ul>
+              <li>MILP Cost &amp; Carbon Planner</li>
+              <li>LightGBM P10/P50/P90 Forecasters</li>
+              <li>Risk Verification &amp; LLM Explainer</li>
+            </ul>
+          </div>
+          <div className="footer-col">
+            <h3>Operational Scope</h3>
+            <ul>
+              <li>15-Minute Resolution (96 Slots/Day)</li>
+              <li>Peak Tariff Window: 17:00–23:00 BST</li>
+              <li>2024 Full-Year Backtest Replay</li>
+            </ul>
+          </div>
+        </div>
+        <div className="footer-bottom">
+          <span>Energy Brain · Site time: Asia/Dhaka</span>
+          <div className="footer-signature" aria-hidden="true">
+            <span className="swatch" style={{ background: '#220901' }} />
+            <span className="swatch" style={{ background: '#621708' }} />
+            <span className="swatch" style={{ background: '#941B0C' }} />
+            <span className="swatch" style={{ background: '#BC3908' }} />
+            <span className="swatch" style={{ background: '#F6AA1C' }} />
+          </div>
+        </div>
+      </footer>
     </div>
   )
 }
