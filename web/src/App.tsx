@@ -143,19 +143,10 @@ export default function App() {
       <header className="page-header">
         <div className="header-inner container-wrap">
           <div className="brand-cluster">
-            <div className="brand-mark" aria-hidden="true">
-              <svg viewBox="0 0 32 32" width="24" height="24" fill="none">
-                <circle cx="16" cy="16" r="13" stroke="currentColor" strokeWidth="1.5" strokeOpacity="0.45" />
-                <path
-                  d="M17.5 6.5L10 17.5h6l-1.5 8L22 14.5h-6l1.5-8z"
-                  fill="currentColor"
-                />
-              </svg>
-            </div>
-            <div className="brand-copy">
-              <p className="eyebrow">DHAKA MICROGRID · AI DISPATCH</p>
-              <h1>Energy Brain</h1>
-            </div>
+            <h1 className="brand-heading">
+              <img src="/logo-full-light.png" alt="Energy Brain" className="brand-logo" />
+            </h1>
+            <span className="brand-subtitle">DHAKA MICROGRID · AI DISPATCH</span>
           </div>
           <div className="header-meta">
             <span className="meta-pill">1,000 kWh BESS</span>
@@ -223,6 +214,7 @@ export default function App() {
         <div className="footer-inner container-wrap">
           <div className="footer-grid">
             <div className="footer-brand">
+              <img src="/logo-full-light.png" alt="" className="footer-logo" />
               <p className="footer-title">Dhaka Commercial Microgrid</p>
               <p className="footer-desc">
                 Multi-agent dispatch optimizer orchestrating solar PV, battery energy storage, flexible HVAC/EV loads, and diesel backup.
