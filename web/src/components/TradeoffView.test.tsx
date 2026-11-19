@@ -4,7 +4,7 @@ import TradeoffView from './TradeoffView'
 import { paretoFixture } from '../test/paretoFixture'
 import { days } from '../test/fixtures'
 import type { ParetoResponse } from '../tradeoff/tradeoffData'
-import { findStable } from '../test/stable'
+import { clickUntil } from '../test/stable'
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
 const props = () => ({ date: '2024-07-02', days: [...days.days, { ...days.days[0], date: '2024-03-09' }], weight: 0.5, active: true, onDateChange: vi.fn(), onUseSetting: vi.fn() })
 function mockResponse(data: ParetoResponse = paretoFixture()) {
@@ -129,7 +129,10 @@ it('shows validation-array messages and no-frontier unsafe warnings', async () =
   fetcher.mockResolvedValue(json(data))
   fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
   expect(await screen.findByText('No efficient safe plans are available for this day.')).toBeVisible()
-  fireEvent.click(await findStable(() => screen.getByRole('button', { name: /Inspect w 0,/ })))
+  await clickUntil(
+    () => screen.getByRole('button', { name: /Inspect w 0,/ }),
+    () => expect(screen.getByRole('region', { name: 'Selected setting' })).toBeInTheDocument(),
+  )
   expect(within(screen.getByRole('region', { name: 'Selected setting' })).getByRole('button')).toBeDisabled()
 })
 it('keeps a failed result when reopened on the same day until Retry is requested', async () => {
