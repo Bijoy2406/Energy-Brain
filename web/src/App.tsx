@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { api } from './api/client'
 import type { ApiResult, DayInfo, PlanResponse } from './api/client'
+import ScheduleCharts from './chart/ScheduleCharts'
+import { formatBdt, formatKg, formatHours } from './chart/scheduleData'
 import './App.css'
 
 function PlanSummary({ plan }: { plan: PlanResponse }) {
@@ -18,35 +20,56 @@ function PlanSummary({ plan }: { plan: PlanResponse }) {
         {warnings.length > 0 && <ul>{warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>}
       </section>
     )}
+    <div className="plan-status">
+      <span className="status-badge">{plan.plan.status}</span>
+      <span className={`status-badge ${plan.safe ? 'safe-badge' : 'unsafe-badge'}`}>{plan.safe ? 'Safe' : 'NOT safe'}</span>
+      {plan.cached && <span className="status-badge">cached</span>}
+    </div>
     <dl className="summary-cards">
-      <div><dt>status</dt><dd>{plan.plan.status}</dd></div>
-      <div><dt>safe</dt><dd>{String(plan.safe)}</dd></div>
-      <div><dt>cost_bdt</dt><dd>{plan.plan.totals.cost_bdt}</dd></div>
-      <div><dt>co2_kg</dt><dd>{plan.plan.totals.co2_kg}</dd></div>
+      <div tabIndex={0}><dt>Cost · BDT</dt><dd>{formatBdt(plan.plan.totals.cost_bdt)}</dd></div>
+      <div tabIndex={0}><dt>CO2 · kg</dt><dd>{formatKg(plan.plan.totals.co2_kg)}</dd></div>
+      <div tabIndex={0}><dt>Generator hours · h</dt><dd>{formatHours(plan.plan.totals.generator_hours)}</dd></div>
     </dl>
     <p className="muted">Totals are reported directly by the planner.</p>
+    <ScheduleCharts response={plan} />
   </>
 }
 
 function PlanPanel({ date }: { date: string }) {
-  const [result, setResult] = useState<ApiResult<PlanResponse> | null>(null)
+  const [state, setState] = useState<{
+    date: string
+    result: ApiResult<PlanResponse>
+    previousPlan: PlanResponse | null
+  } | null>(null)
 
   useEffect(() => {
     let active = true
-    void api.plan({ date, w: 0.5 }).then((response) => {
-      if (active) setResult(response)
+    void api.plan({ date, w: 0.5 }).then((result) => {
+      if (active) setState((previous) => ({
+        date, result,
+        previousPlan: result.ok ? result.data : previous?.previousPlan ?? null,
+      }))
     })
     return () => { active = false }
   }, [date])
 
-  if (!result) return <p role="status">Loading plan…</p>
-  if (!result.ok) return <p className="warning" role="alert">{result.error.message}</p>
-  return <PlanSummary plan={result.data} />
+  const loading = state?.date !== date
+  const plan = state?.previousPlan
+  const error = !loading && state && !state.result.ok ? state.result.error : null
+  return <>
+    {loading && <p role="status">Loading plan…{plan && ` Showing previous plan: ${plan.date}.`}</p>}
+    {error && <p className="warning" role="alert">{error.message}</p>}
+    {error && plan && <p className="muted">Showing previous plan: {plan.date}.</p>}
+    <section aria-label="Plan results" aria-busy={loading} className={loading || error ? 'plan-results is-stale' : 'plan-results'}>
+      {plan && <PlanSummary plan={plan} />}
+    </section>
+  </>
 }
 
 export default function App() {
   const [days, setDays] = useState<ApiResult<DayInfo[]> | null>(null)
   const [selectedDate, setSelectedDate] = useState('')
+  const selectedDay = days?.ok ? days.data.find((day) => day.date === selectedDate) : undefined
 
   useEffect(() => {
     let active = true
@@ -79,7 +102,8 @@ export default function App() {
           {days?.ok && (days.data.length > 0 ? (
             <div className="day-field">
               <label htmlFor="planning-day">Planning day</label>
-              <select id="planning-day" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)}>
+              <select id="planning-day" value={selectedDate} title={selectedDay && `${selectedDay.date} — ${selectedDay.label}`}
+                onChange={(event) => setSelectedDate(event.target.value)}>
                 {days.data.map((day) => <option key={day.date} value={day.date}>{day.date} — {day.label}</option>)}
               </select>
             </div>
@@ -88,8 +112,7 @@ export default function App() {
         <div className="workspace">
           <section className="panel schedule-panel" aria-labelledby="schedule-title">
             <div className="panel-heading"><h2 id="schedule-title">Schedule dashboard</h2><span className="muted">Daily plan</span></div>
-            {selectedDate && <PlanPanel key={selectedDate} date={selectedDate} />}
-            <div className="placeholder"><h3>Schedule view</h3><p>The daily schedule will appear here.</p></div>
+            {selectedDate && <PlanPanel date={selectedDate} />}
           </section>
           <aside className="panel chat-panel" aria-labelledby="chat-title">
             <p className="eyebrow">PLAN EXPLAINER</p><h2 id="chat-title">Ask about your plan</h2>
