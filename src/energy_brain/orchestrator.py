@@ -12,6 +12,7 @@ from datetime import datetime
 
 from energy_brain.interfaces import AssetProvider, ForecastAgent, PlannerAgent, RiskAgent, SignalAgent
 from energy_brain.planner import is_safe
+from energy_brain.planner.fixes import SlotFixes
 from energy_brain.risk.reasons import parse_reason
 from energy_brain.schemas import AssetConstraints, Forecast, PlanResult, RiskReport, SignalTable
 from energy_brain.timeaxis import ensure_start, n_slots
@@ -55,10 +56,13 @@ def run_plan(
     assets: AssetProvider,
     planner: PlannerAgent,
     risk: RiskAgent,
+    fixes: SlotFixes | None = None,
     max_replans: int = 3,
     margin_step_kwh: float = DEFAULT_MARGIN_STEP_KWH,
 ) -> PlanResult:
     """Run one day-ahead planning cycle and return a ``PlanResult`` with ``risk`` filled.
+
+    Slot fixes are passed unchanged on every Risk re-plan; no fixed decision is silently released.
 
     ``weight`` in [0, 1] (1 = cheapest, 0 = cleanest). On each Risk rejection the reserve becomes
     ``max(report.reserve_margin_kwh, current + margin_step_kwh)`` kWh and the Planner re-solves. Re-planning
@@ -84,9 +88,10 @@ def run_plan(
     if forecast.fallback_used:
         logger.warning("forecast fallback in use: %s", forecast.note)
 
+    fixed_kwargs = {"fixes": fixes} if fixes is not None else {}
     margin = 0.0
     replans = 0
-    plan = planner.plan(forecast, signals, constraints, weight, reserve_margin_kwh=margin)
+    plan = planner.plan(forecast, signals, constraints, weight, reserve_margin_kwh=margin, **fixed_kwargs)
     _check_plan(plan, start)
     report = risk.check(plan, forecast, signals, constraints)
     attempts = [(plan, report)]
@@ -116,7 +121,7 @@ def run_plan(
             max_replans,
             margin,
         )
-        plan = planner.plan(forecast, signals, constraints, weight, reserve_margin_kwh=margin)
+        plan = planner.plan(forecast, signals, constraints, weight, reserve_margin_kwh=margin, **fixed_kwargs)
         _check_plan(plan, start)
         report = risk.check(plan, forecast, signals, constraints)
         attempts.append((plan, report))

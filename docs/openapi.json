@@ -79,6 +79,26 @@
               }
             }
           },
+          "422": {
+            "description": "invalid operator override (normal validation uses FastAPI)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "too many uncached override computations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
           "503": {
             "description": "no forecast could be made (not even sample data)",
             "content": {
@@ -88,13 +108,65 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/simulate/cloud": {
+      "post": {
+        "tags": [
+          "plan"
+        ],
+        "summary": "Re-plan a historical replay after a simulated cloud event",
+        "description": "A simulated cloud event reduces the historical forecast, not observed or live weather data.\n\nFreeze controllable decisions before the event, then run Planner and Risk. A failed re-plan is\nreturned with 200 and honest diagnostic banners; always check safe and risk_ok.",
+        "operationId": "cloud_simulate_cloud_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloudRequest"
+              }
+            }
           },
-          "422": {
-            "description": "Validation Error",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/CloudResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "invalid simulated cloud event",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "too many uncached simulated cloud events",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "no forecast could be made",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             }
@@ -353,6 +425,27 @@
   },
   "components": {
     "schemas": {
+      "AffectedSlots": {
+        "properties": {
+          "start": {
+            "type": "integer",
+            "title": "Start",
+            "description": "first affected slot, inclusive (zero based)"
+          },
+          "end": {
+            "type": "integer",
+            "title": "End",
+            "description": "last affected slot, exclusive; clipped to the day"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "AffectedSlots"
+      },
       "AssetConstraints": {
         "properties": {
           "start": {
@@ -727,6 +820,179 @@
           "inflight"
         ],
         "title": "CacheStats"
+      },
+      "CloudEvent": {
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "title": "Date",
+            "description": "planning day, YYYY-MM-DD, from 2022-01-01 to tomorrow (site time)"
+          },
+          "w": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "W",
+            "description": "weight in [0, 1]: 1 = cheapest, 0 = cleanest; rounded to 0.01"
+          },
+          "time": {
+            "type": "string",
+            "title": "Time",
+            "description": "event start HH:MM, on the 15-minute grid, site time"
+          },
+          "drop_pct": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Drop Pct",
+            "description": "simulated reduction of all solar quantiles, percent"
+          },
+          "duration_minutes": {
+            "type": "integer",
+            "maximum": 720.0,
+            "minimum": 15.0,
+            "title": "Duration Minutes",
+            "description": "simulated duration; affected slots round up to whole slots and clip at end of day",
+            "default": 120
+          },
+          "kind": {
+            "type": "string",
+            "const": "simulated cloud event",
+            "title": "Kind",
+            "description": "forecast what-if on a historical replay, not live data",
+            "default": "simulated cloud event"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "date",
+          "w",
+          "time",
+          "drop_pct"
+        ],
+        "title": "CloudEvent",
+        "examples": [
+          {
+            "date": "2024-07-02",
+            "w": 0.5
+          }
+        ]
+      },
+      "CloudRequest": {
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "title": "Date",
+            "description": "planning day, YYYY-MM-DD, from 2022-01-01 to tomorrow (site time)"
+          },
+          "w": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "W",
+            "description": "weight in [0, 1]: 1 = cheapest, 0 = cleanest; rounded to 0.01"
+          },
+          "time": {
+            "type": "string",
+            "title": "Time",
+            "description": "event start HH:MM, on the 15-minute grid, site time"
+          },
+          "drop_pct": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Drop Pct",
+            "description": "simulated reduction of all solar quantiles, percent"
+          },
+          "duration_minutes": {
+            "type": "integer",
+            "maximum": 720.0,
+            "minimum": 15.0,
+            "title": "Duration Minutes",
+            "description": "simulated duration; affected slots round up to whole slots and clip at end of day",
+            "default": 120
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "date",
+          "w",
+          "time",
+          "drop_pct"
+        ],
+        "title": "CloudRequest",
+        "description": "Simulated cloud event on a historical replay forecast; this is not live weather data.",
+        "examples": [
+          {
+            "date": "2024-07-02",
+            "w": 0.5
+          }
+        ]
+      },
+      "CloudResponse": {
+        "properties": {
+          "before": {
+            "$ref": "#/components/schemas/PlanResponse",
+            "description": "normal plan before the simulated cloud event"
+          },
+          "after": {
+            "$ref": "#/components/schemas/PlanResponse",
+            "description": "re-plan with reduced solar and the executed prefix frozen"
+          },
+          "event": {
+            "$ref": "#/components/schemas/CloudEvent",
+            "description": "echo of the simulated cloud event"
+          },
+          "affected_slots": {
+            "$ref": "#/components/schemas/AffectedSlots",
+            "description": "range affected by the simulated cloud event"
+          },
+          "delta": {
+            "$ref": "#/components/schemas/TotalsDelta",
+            "description": "after minus before planned totals"
+          },
+          "replan_seconds": {
+            "type": "number",
+            "title": "Replan Seconds",
+            "description": "wall time of re-planning only, excluding baseline and lock wait"
+          },
+          "safe": {
+            "type": "boolean",
+            "title": "Safe",
+            "description": "after plan meets hard constraints and passes Risk"
+          },
+          "risk_ok": {
+            "type": "boolean",
+            "title": "Risk Ok",
+            "description": "after plan Risk verdict"
+          },
+          "banners": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Banners",
+            "description": "simulation, fallback, infeasibility and Risk warnings"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "before",
+          "after",
+          "event",
+          "affected_slots",
+          "delta",
+          "replan_seconds",
+          "safe",
+          "risk_ok",
+          "banners"
+        ],
+        "title": "CloudResponse"
       },
       "DayInfo": {
         "properties": {
@@ -1470,6 +1736,40 @@
         ],
         "title": "OutageBlock"
       },
+      "OverrideImpact": {
+        "properties": {
+          "applied": {
+            "items": {
+              "$ref": "#/components/schemas/SlotOverride"
+            },
+            "type": "array",
+            "title": "Applied",
+            "description": "operator decisions used as hard constraints"
+          },
+          "baseline": {
+            "$ref": "#/components/schemas/Totals",
+            "description": "normal plan totals for the same date and rounded weight"
+          },
+          "delta": {
+            "$ref": "#/components/schemas/TotalsDelta",
+            "description": "override totals minus baseline totals"
+          },
+          "feasible": {
+            "type": "boolean",
+            "title": "Feasible",
+            "description": "all planner hard constraints and overrides met; also check risk_ok"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "applied",
+          "baseline",
+          "delta",
+          "feasible"
+        ],
+        "title": "OverrideImpact"
+      },
       "ParetoPoint": {
         "properties": {
           "weight": {
@@ -1654,6 +1954,22 @@
             "minimum": 0.0,
             "title": "W",
             "description": "weight in [0, 1]: 1 = cheapest, 0 = cleanest; rounded to 0.01"
+          },
+          "overrides": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SlotOverride"
+                },
+                "type": "array",
+                "maxItems": 96
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overrides",
+            "description": "optional unique slot overrides (at most 96)"
           }
         },
         "additionalProperties": false,
@@ -1663,7 +1979,7 @@
           "w"
         ],
         "title": "PlanRequest",
-        "description": "A day and a cost/carbon weight.",
+        "description": "A normal plan or a re-solve with operator decisions fixed for selected slots.",
         "examples": [
           {
             "date": "2024-07-02",
@@ -1690,7 +2006,7 @@
           "safe": {
             "type": "boolean",
             "title": "Safe",
-            "description": "false = NOT SAFE TO EXECUTE (planner.is_safe): show the banner, never present the schedule as runnable"
+            "description": "false = NOT SAFE TO EXECUTE: show the banner, never present the schedule as runnable. Normal plans use planner.is_safe; what-if responses also require Risk to pass."
           },
           "risk_ok": {
             "type": "boolean",
@@ -1738,6 +2054,17 @@
             "format": "date-time",
             "title": "Computed At",
             "description": "when this plan was solved (site time)"
+          },
+          "override": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OverrideImpact"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "operator override impact, otherwise null"
           }
         },
         "additionalProperties": false,
@@ -2069,6 +2396,47 @@
         "title": "SignalTable",
         "description": "Signal agent output (#15): prices, emission factors and outages per slot.\n\n``outage[t]`` is True when the grid is UNAVAILABLE in slot t (load-shedding): grid import must be 0."
       },
+      "SlotOverride": {
+        "properties": {
+          "time": {
+            "type": "string",
+            "title": "Time",
+            "description": "HH:MM on the 15-minute grid, site time (Asia/Dhaka)"
+          },
+          "battery_kw": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battery Kw",
+            "description": "signed kW: positive charges, negative discharges, 0 idles; bounded by site limits"
+          },
+          "generator_kw": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generator Kw",
+            "description": "kW: 0 turns off, otherwise within the site's [min_kw, rated_kw]"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "time"
+        ],
+        "title": "SlotOverride",
+        "description": "Operator decisions for one slot; site asset limits are validated by the service."
+      },
       "ToolCallRecord": {
         "properties": {
           "name": {
@@ -2161,6 +2529,40 @@
         ],
         "title": "Totals",
         "description": "Day totals and per-slot cost/CO2. Always produced by ``energy_brain.accounting.compute_totals``."
+      },
+      "TotalsDelta": {
+        "properties": {
+          "cost_bdt": {
+            "type": "number",
+            "title": "Cost Bdt",
+            "description": "change in planned cost, BDT"
+          },
+          "co2_kg": {
+            "type": "number",
+            "title": "Co2 Kg",
+            "description": "change in planned emissions, kg CO2"
+          },
+          "generator_hours": {
+            "type": "number",
+            "title": "Generator Hours",
+            "description": "change in generator running hours"
+          },
+          "diesel_litres": {
+            "type": "number",
+            "title": "Diesel Litres",
+            "description": "change in planned diesel consumption, litres"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "cost_bdt",
+          "co2_kg",
+          "generator_hours",
+          "diesel_litres"
+        ],
+        "title": "TotalsDelta",
+        "description": "Signed planned totals, after minus before; no settlement against actuals."
       },
       "ValidationError": {
         "properties": {

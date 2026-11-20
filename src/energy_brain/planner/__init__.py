@@ -2,6 +2,15 @@
 
 from energy_brain.planner.agent import UNSAFE_PREFIX, MilpPlanner, is_safe
 from energy_brain.planner.checks import find_violations
+from energy_brain.planner.fixes import SlotFix, SlotFixes
 from energy_brain.planner.reference import rule_based_schedule
 
-__all__ = ["UNSAFE_PREFIX", "MilpPlanner", "find_violations", "is_safe", "rule_based_schedule"]
+__all__ = [
+    "UNSAFE_PREFIX",
+    "MilpPlanner",
+    "SlotFix",
+    "SlotFixes",
+    "find_violations",
+    "is_safe",
+    "rule_based_schedule",
+]

@@ -29,6 +29,9 @@ comfort band in degrees C cannot be modelled. ``min_kw_when_occupied`` is the co
 thermal state, cooling before a shift does not reduce cooling during it, so pre-cooling never pays off and
 HVAC stays at its occupied minimum. Real pre-cooling needs a thermal model and new schema fields.
 
+Slot fixes constrain controllable powers by equality in both normal and elastic models; grid, solar
+dispatch and SoC remain free and must obey every hard constraint.
+
 Slack mode (``elastic=True``): adds ``unserved[t] >= 0`` kW on the supply side of the balance and
 ``ev_short >= 0`` kWh on the EV requirement, heavily penalised. Every other hard constraint is kept. Used
 only to diagnose an infeasible day; such a schedule is never safe to execute.
@@ -41,6 +44,7 @@ from dataclasses import dataclass
 import pyomo.environ as pe
 
 from energy_brain.planner import rules
+from energy_brain.planner.fixes import SlotFixes
 from energy_brain.schemas import AssetConstraints, Forecast, SignalTable
 from energy_brain.timeaxis import n_slots, slot_hours
 
@@ -73,8 +77,11 @@ def build_model(
     scales: Scales,
     *,
     elastic: bool = False,
+    fixes: SlotFixes | None = None,
 ) -> pe.ConcreteModel:
     """Return the Pyomo model described in the module docstring. Reads inputs only, never modifies them."""
+    if fixes is not None:
+        fixes.validate(assets)
     n, h = n_slots(), slot_hours()
     b, hv, ev, gen = assets.battery, assets.hvac, assets.ev, assets.generator
     eta = b.one_way_efficiency
@@ -100,6 +107,26 @@ def build_model(
     m.ev = pe.Var(m.T, within=nn, bounds=lambda _, t: (0, ev.charger_kw if ev.plugged_in[t] else 0.0))
     m.gen = pe.Var(m.T, within=nn, bounds=(0, gen.rated_kw))
     m.gen_on = pe.Var(m.T, within=pe.Binary)
+
+    if fixes is not None:
+        names = {
+            "battery_charge_kw": "charge",
+            "battery_discharge_kw": "discharge",
+            "generator_kw": "gen",
+            "ev_charge_kw": "ev",
+            "hvac_kw": "hvac",
+        }
+        m.slot_fixes = pe.ConstraintList()
+        for fix in fixes.slots:
+            for name, value in fix.values().items():
+                m.slot_fixes.add(getattr(m, names[name])[fix.slot] == value)
+            if fix.generator_kw is not None:
+                m.gen_on[fix.slot].fix(int(fix.generator_kw > 0))
+            if fix.battery_charge_kw is not None and fix.battery_charge_kw > 0:
+                m.mode[fix.slot].fix(1)
+            if fix.battery_discharge_kw is not None and fix.battery_discharge_kw > 0:
+                # Equality constraints retain contradictions (e.g. both powers positive) as infeasible.
+                m.slot_fixes.add(m.mode[fix.slot] == 0)
 
     m.solar_split = pe.Constraint(m.T, rule=lambda m, t: m.solar_used[t] + m.solar_curt[t] == solar[t])
     m.charge_mode = pe.Constraint(m.T, rule=lambda m, t: m.charge[t] <= b.max_charge_kw * m.mode[t])
