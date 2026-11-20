@@ -4,6 +4,7 @@ import { api } from '../api/client'
 import type { ApiResult } from '../api/client'
 import type { components } from '../api/generated'
 import AnswerText from './AnswerText'
+import { Listen, Microphone } from './BrowserSpeech'
 
 type Answer = components['schemas']['ExplainResponse']
 type Question = components['schemas']['ExplainRequest']
@@ -16,11 +17,12 @@ const suggestions = [
   'What will today cost, and how much CO2?',
   'Is this plan safe, and what did the Risk agent find?',
 ]
+
 const refusals: Record<string, string> = {
   missing_data: 'The explainer does not have the data needed to answer this question.',
   off_topic: 'The explainer can only answer questions about the energy plan.',
   change_request: 'The explainer can explain the plan but cannot change or control it.',
-  language: 'Only English questions are supported.',
+  language: 'English questions are supported.',
 }
 
 function BotAvatar() {
@@ -33,12 +35,13 @@ function BotAvatar() {
   </span>
 }
 
-function AnswerMessage({ answer, date, weight }: { answer: Answer; date: string; weight: number }) {
-  return <>
+function AnswerMessage({ answer, date, weight, onSpeechUse }: { answer: Answer; date: string; weight: number; onSpeechUse: (source: 'server' | 'browser') => void }) {
+  return <div>
     {!!answer.banners?.length && <div className="warning" role="alert"><ul>{answer.banners.map((banner, index) => <li key={index}>{banner}</li>)}</ul></div>}
     <p className="muted answer-context">Day {answer.date}, w = {answer.weight.toFixed(2)}</p>
     {(answer.date !== date || answer.weight !== weight) && <p className="muted">This answer is about a different day or weight than the one shown.</p>}
     <div className="answer-badges">
+      {!answer.verified && answer.refusal_reason === 'unverified' && <span className="status-badge">Unverified</span>}
       {answer.verified && <span className="status-badge safe-badge">Verified</span>}
       {answer.cached && <span className="status-badge">Stored answer</span>}
       {answer.refusal_reason && answer.refusal_reason !== 'unverified' && <span className="status-badge">Not answered</span>}
@@ -51,6 +54,7 @@ function AnswerMessage({ answer, date, weight }: { answer: Answer; date: string;
     </div>}
     {answer.refusal_reason && refusals[answer.refusal_reason] && <p className="muted">{refusals[answer.refusal_reason]}</p>}
     <AnswerText text={answer.answer} provenance={answer.provenance} />
+    <Listen text={answer.answer} onUse={onSpeechUse} />
     <details className="answer-sources">
       <summary>Sources</summary>
       <h3>Tool calls</h3>
@@ -63,11 +67,12 @@ function AnswerMessage({ answer, date, weight }: { answer: Answer; date: string;
         <tbody>{answer.provenance?.map((source, index) => <tr key={index}><td>{source.text}</td><td>{source.tool}</td><td>{source.field}</td></tr>)}</tbody>
       </table>
     </details>
-  </>
+  </div>
 }
 
-export default function ExplainerPanel({ date, weight }: { date: string; weight: number }) {
+export default function ExplainerPanel({ date, weight, demoAsk = false }: { date: string; weight: number; demoAsk?: boolean }) {
   const id = useId()
+  const [micMessage, setMicMessage] = useState('')
   const [open, setOpen] = useState(false)
   const [everOpened, setEverOpened] = useState(false)
   const [intro, setIntro] = useState(true)
@@ -87,6 +92,7 @@ export default function ExplainerPanel({ date, weight }: { date: string; weight:
   function close() {
     openRef.current = false
     setOpen(false)
+    window.speechSynthesis?.cancel()
     // The launcher is hidden while the chat is open, so it is focused after the re-render (see the effect below).
     returnToLauncher.current = true
   }
@@ -99,6 +105,7 @@ export default function ExplainerPanel({ date, weight }: { date: string; weight:
     setIntro(false)
     setUnread(false)
   }
+  const [speechNote, setSpeechNote] = useState<false | 'server' | 'browser'>(false)
   const [question, setQuestion] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
   const [pending, setPending] = useState<number | null>(null)
@@ -111,7 +118,23 @@ export default function ExplainerPanel({ date, weight }: { date: string; weight:
   const coolingDown = retryAfter > 0
   const disabled = pending !== null || coolingDown || !date
 
-  useEffect(() => () => { active.current?.abort() }, [])
+  const demoWasOpen = useRef(false)
+  useEffect(() => {
+    if (demoAsk) {
+      openRef.current = true
+      setOpen(true)
+      setEverOpened(true)
+      setIntro(false)
+      setUnread(false)
+      setQuestion(suggestions[0])
+    } else if (demoWasOpen.current) {
+      openRef.current = false
+      setOpen(false)
+    }
+    demoWasOpen.current = demoAsk
+  }, [demoAsk])
+
+  useEffect(() => () => { active.current?.abort(); window.speechSynthesis?.cancel() }, [])
   useEffect(() => {
     const timer = setTimeout(() => setIntro(false), 4500)
     return () => clearTimeout(timer)
@@ -213,7 +236,7 @@ export default function ExplainerPanel({ date, weight }: { date: string; weight:
         <div className="chat-messages" aria-live="polite" aria-relevant="additions text">
           <div className="chat-assistant chat-welcome">
             <BotAvatar />
-            <div className="explainer-answer"><p>Hi, I'm the Energy Brain explainer. Ask why the plan charges, discharges or runs the generator. I can explain the plan but not change it.</p></div>
+            <div className="explainer-answer"><p>Hi! Ask me why the plan charges, discharges or runs the generator.</p></div>
           </div>
           {messages.map((message) => <article className="chat-message" key={message.id} aria-label="Explainer exchange">
             <p className="chat-question">{message.request.question}</p>
@@ -223,7 +246,7 @@ export default function ExplainerPanel({ date, weight }: { date: string; weight:
               if (!result.ok && result.error.kind === 'aborted') return null
               const error = !result.ok || !!result.data.error
               return <div className="chat-assistant"><BotAvatar /><div className={error ? 'warning unsafe explainer-error' : 'explainer-answer'} role={error ? 'alert' : undefined}>
-                {result.ok ? <AnswerMessage answer={result.data} date={date} weight={weight} /> : <p>{result.error.kind !== 'aborted' && (result.error.kind === 'network'
+                {result.ok ? <AnswerMessage answer={result.data} date={date} weight={weight} onSpeechUse={setSpeechNote} /> : <p>{result.error.kind !== 'aborted' && (result.error.kind === 'network'
                   ? 'The explainer is unreachable. Check the connection and try again.' : result.error.message)}</p>}
                 {error && (result.ok || (!result.ok && result.error.kind !== 'validation')) && <button type="button" disabled={disabled}
                   onClick={() => { void send(message.request) }}>Retry</button>}
@@ -254,15 +277,20 @@ export default function ExplainerPanel({ date, weight }: { date: string; weight:
                 if (!disabled) void send({ date, w: weight, question })
               }
             }} />
+          <Microphone disabled={disabled || !open}
+            onTranscript={(text) => { setQuestion(text); textarea.current?.focus() }} onUse={setSpeechNote} onMessage={setMicMessage} />
           <button className="chat-send" type="submit" aria-label="Send" disabled={disabled || !question.trim()}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m21 3-7 18-4-7-7-4 18-7ZM10 14 21 3" /></svg>
           </button>
         </div>
+        {micMessage && <p className="chat-mic-message" role="status">{micMessage}</p>}
+        {speechNote === 'browser' && <p className="chat-response-hint muted" role="note">Browser speech services may send audio to the browser vendor’s servers.</p>}
+        {speechNote === 'server' && <p className="chat-response-hint muted" role="note">Voice is sent to Groq to turn it into text and is not stored.</p>}
         <div className="chat-composer-actions">
           <p className="muted" id={`${id}-hint`}>Enter to send · Shift+Enter for a new line</p>
           <span className="muted" id={`${id}-counter`}>{question.length}/500</span>
         </div>
-        <p className="chat-response-hint muted">Answers use the planner’s results. A live answer can take about 6 seconds.</p>
+        <p className="chat-response-hint muted">Numbers are checked against the plan. Live answers can take a few seconds.</p>
       </form>
     </div>
   </aside>

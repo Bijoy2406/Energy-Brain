@@ -14,6 +14,19 @@ const api = createApiClient('http://api.test/')
 afterEach(() => vi.unstubAllEnvs())
 
 describe('API client', () => {
+  it('builds report URLs using the configured base and omits absent optional values', () => {
+    expect(api.reportUrl(null)).toBe('http://api.test/report')
+    expect(api.reportUrl(null, 0.5)).toBe('http://api.test/report?weight=0.5')
+    expect(api.reportUrl('2024-07', 0)).toBe('http://api.test/report?month=2024-07&weight=0')
+    expect(createApiClient('').reportUrl('2024-07', 1)).toBe('/report?month=2024-07&weight=1')
+  })
+
+  it('preserves report API errors instead of attempting a PDF download', async () => {
+    respond({ detail: { code: 'month_not_in_backtest', message: 'Available: 2024-01 .. 2024-12' } }, 422)
+    expect(await api.downloadReport('2025-01', 0.5)).toMatchObject({
+      ok: false, error: { code: 'month_not_in_backtest', message: 'Available: 2024-01 .. 2024-12' },
+    })
+  })
   it.each([true, false])('defaults to the correct origin with PROD=%s', async (production) => {
     vi.stubEnv('PROD', production)
     vi.stubEnv('VITE_API_BASE_URL', '')
@@ -57,6 +70,21 @@ describe('API client', () => {
     expect(await api.pareto('2024-07-02', signal)).toEqual({ ok: true, data: body })
     expect(fetchMock).toHaveBeenCalledWith('http://api.test/pareto?date=2024-07-02',
       expect.objectContaining({ method: 'GET', signal }))
+  })
+
+  it('posts cloud controls and forwards the abort signal', async () => {
+    const body = { date: '2024-07-02', w: 0.5, time: '13:00', drop_pct: 60, duration_minutes: 120 }
+    const fetchMock = respond({ replan_seconds: 0.42 })
+    const { signal } = new AbortController()
+    expect(await api.simulateCloud(body, signal)).toEqual({ ok: true, data: { replan_seconds: 0.42 } })
+    expect(fetchMock).toHaveBeenCalledWith('http://api.test/simulate/cloud', expect.objectContaining({ method: 'POST', body: JSON.stringify(body), signal }))
+  })
+
+  it('preserves overrides and maps invalid_overrides messages', async () => {
+    const fetchMock = respond({ detail: { code: 'invalid_overrides', message: 'Battery exceeds site limits' } }, 422)
+    const body = { date: '2024-07-02', w: 0.5, overrides: [{ time: '13:00', battery_kw: -1, generator_kw: 0 }] }
+    expect(await api.plan(body)).toEqual({ ok: false, error: { kind: 'api', status: 422, code: 'invalid_overrides', message: 'Battery exceeds site limits', retry_after_s: null } })
+    expect(fetchMock).toHaveBeenCalledWith('http://api.test/plan', expect.objectContaining({ body: JSON.stringify(body) }))
   })
 
   it('maps FastAPI validation errors with field locations', async () => {

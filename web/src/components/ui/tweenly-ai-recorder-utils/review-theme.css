@@ -1,0 +1,39 @@
+/*
+  Tailwind for the recorder only.
+
+  - No preflight (global reset): the app's own CSS stays exactly as it is.
+  - Utilities are generated only for classes found in src/components/ui, so Tailwind class names can never
+    collide with the app's own class names elsewhere.
+  - shadcn colour tokens are mapped onto the app's existing CSS variables, so the recorder follows the light
+    and dark themes without a second set of colours.
+*/
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities) source(none);
+@source "../";
+
+@theme inline {
+  --color-background: var(--bg-page);
+  --color-foreground: var(--text-primary);
+  --color-card: var(--surface-subtle);
+  --color-muted-foreground: var(--muted);
+  --color-ring: var(--c-blue);
+  --color-border: var(--line-strong);
+}
+
+/* A small scoped reset instead of Tailwind's global preflight. */
+@layer base {
+  .tweenly-recorder, .tweenly-recorder * {
+    box-sizing: border-box;
+    border-color: var(--line-strong);
+    border-style: solid;
+    border-width: 0;
+  }
+  .tweenly-recorder button {
+    font: inherit;
+    color: inherit;
+    background: transparent;
+    padding: 0;
+    margin: 0;
+  }
+}

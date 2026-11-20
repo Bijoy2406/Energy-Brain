@@ -2173,3 +2173,88 @@ dd {
   .header-inner { flex-wrap: nowrap; gap: 0.5rem; }
   .header-meta { flex-shrink: 0; }
 }
+
+/* Historical what-if tools share the existing theme and chart tokens. */
+.what-if-panel { margin-top: 1.25rem; min-width: 0; }
+.what-if-panel > .honesty-strip { margin-bottom: 0.6rem; }
+.what-if-panel summary { min-height: 44px; padding-block: 0.65rem; cursor: pointer; font-weight: 700; }
+.what-if-controls, .override-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin-block: 1rem; }
+.what-if-panel label { display: flex; flex-direction: column; gap: 0.4rem; min-width: 0; }
+.what-if-panel :is(input, select) { width: 100%; min-width: 0; min-height: 44px; padding: 0.55rem; background: var(--surface); color: var(--text-primary); border: 1px solid var(--line-strong); border-radius: 0.4rem; font: inherit; }
+.what-if-panel input[type="range"] { padding: 0; accent-color: var(--c-blue); }
+.what-if-panel button, .demo-guide button { min-height: 44px; max-width: 100%; padding: 0.55rem 0.8rem; font: inherit; font-size: 0.85rem; background: var(--c-blue); border: 1px solid var(--c-blue); border-radius: 0.5rem; color: var(--on-accent); cursor: pointer; overflow-wrap: anywhere; }
+.what-if-panel button:disabled, .demo-guide button:disabled { opacity: 0.5; cursor: not-allowed; }
+.what-if-panel :is(button, select, input, summary):focus-visible, .demo-guide button:focus-visible, .what-if-table-scroll:focus-visible { outline: 2px solid var(--c-blue); outline-offset: 3px; }
+.what-if-actions, .demo-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.override-row { padding: 0.8rem; border: 1px solid var(--line-strong); border-radius: 0.5rem; }
+.override-row legend { font-weight: 700; }
+.override-row button { justify-self: start; }
+.what-if-table-scroll { max-width: 100%; overflow-x: auto; margin-block: 1rem; }
+.what-if-table { min-width: 32rem; }
+.what-if-table :is(th, td):first-child { width: 28%; }
+.cloud-chart { height: clamp(280px, 42vh, 400px); }
+.what-if-panel :is(p, legend, label) { overflow-wrap: anywhere; }
+.what-if-panel > details > section { margin-top: 1rem; }
+button.demo-toggle { display: inline-flex; align-items: center; min-height: 44px; cursor: pointer; font: inherit; font-size: 0.75rem; }
+.demo-toggle[aria-pressed="true"] { border-color: var(--c-amber); }
+.demo-toggle:focus-visible { outline: 2px solid var(--c-amber); outline-offset: 3px; }
+.demo-guide { padding: 0.7rem max(1rem, calc((100vw - 1360px) / 2)); background: var(--surface); color: var(--text-primary); border-top: 1px solid var(--line-strong); display: flex; align-items: center; justify-content: space-between; gap: 1rem; box-shadow: var(--shadow-sm); }
+.demo-guide > div { min-width: 0; }
+.demo-title { margin: 0; font-weight: 700; }
+.demo-description { margin: 0; font-size: 0.85rem; }
+.demo-actions { flex-shrink: 0; }
+.app-shell:has(.demo-guide) :is(.same-day-card, .honesty-strip, .weight-control, #cloud-event-panel, .backtest-caveats h2) { scroll-margin-top: 15rem; }
+.weight-control input { min-height: 44px; }
+@media (max-width: 767px) {
+  .what-if-controls, .override-row { grid-template-columns: minmax(0, 1fr); }
+  .demo-guide { position: fixed; z-index: 1004; bottom: calc(104px + env(safe-area-inset-bottom, 0px)); left: max(0.75rem, env(safe-area-inset-left, 0px)); right: max(0.75rem, env(safe-area-inset-right, 0px)); display: block; padding: 0.7rem; border: 1px solid var(--line-strong); border-radius: 0.85rem; max-height: min(40dvh, 16rem); overflow-y: auto; }
+  .demo-actions { margin-top: 0.5rem; }
+  .app-shell:has(.demo-guide) .page-body { padding-bottom: 20rem; }
+  body:has(.demo-chat-step) .chat-panel { bottom: calc(116px + var(--demo-guide-height, 174px) + env(safe-area-inset-bottom, 0px)); top: 0; right: 0; width: 100%; max-width: 100%; height: calc(100dvh - 116px - var(--demo-guide-height, 174px) - env(safe-area-inset-bottom, 0px)); max-height: none; }
+}
+@media (max-width: 450px) {
+  .brand-logo { max-width: 145px; height: auto; }
+  .header-meta { gap: 0.4rem; }
+}
+
+/* Leave the measured demo card and launcher space clear, even on short phones.
+   The entire chat can scroll when its fixed sections exceed the available height. */
+@media (max-width: 767px) {
+  body:has(.demo-chat-step) .chat-content { overflow-y: auto; }
+  body:has(.demo-chat-step) .chat-scroll { flex: 0 0 auto; overflow-y: visible; }
+}
+.page-tabs button, .segmented-control button, .limits-link, .day-field select,
+.chat-panel .suggested-questions button, .chat-panel .chat-suggestions-toggle { min-height: 44px; }
+.tradeoff-view button:not(.tradeoff-dot) { min-height: 44px; }
+
+.chat-panel textarea, .chat-panel select, .chat-panel button { font-family: inherit; }
+.chat-messages, .chat-question, .answer-text, .suggested-questions button { overflow-wrap: anywhere; min-width: 0; }
+
+.chat-panel .chat-mic, .chat-panel .chat-listen { min-height: 44px; color: var(--text-primary); background: var(--surface); border-color: var(--line-strong); }
+.chat-panel .chat-mic[aria-pressed="true"] { color: var(--chat-teal-text); background: var(--chat-teal-bg); }
+
+/* Compact chat header. */
+.chat-panel .chat-context-row { display: flex; align-items: center; gap: .5rem; padding: .45rem .85rem; }
+.chat-panel .chat-context { padding: .3rem .6rem; font-size: .72rem; min-width: 0; }
+.chat-panel .chat-welcome .explainer-answer { padding: .65rem .85rem; }
+.chat-panel .chat-welcome p { line-height: 1.5; }
+.chat-panel .chat-scroll { padding-top: .85rem; padding-bottom: .5rem; }
+.chat-panel .suggested-questions { padding: .5rem .85rem; gap: .3rem; }
+.chat-panel .chat-composer { padding-top: .6rem; }
+.chat-panel .chat-composer > label { font-size: .72rem; margin-bottom: .3rem; }
+.chat-panel .chat-composer-actions { margin-top: .35rem; }
+.chat-panel .chat-response-hint { margin-top: .25rem; font-size: .66rem; }
+
+.chat-panel .chat-mic-message { margin: .4rem 0 0; padding: .45rem .6rem; font-size: .74rem; line-height: 1.45; border: 1px solid var(--warning-border); border-radius: .5rem; background: var(--warning-bg); color: var(--text-primary); }
+
+/* Voice button: an icon, never text. The recorder (ui/tweenly-ai-recorder) covers the input row while it is open. */
+.chat-panel .chat-mic { display: inline-grid; place-items: center; flex: 0 0 auto; width: 44px; min-width: 44px; height: 44px; min-height: 44px; padding: 0; border-radius: 50%; }
+.chat-panel .chat-mic-icon { width: 20px; height: 20px; }
+.chat-panel .chat-mic[data-phase="recording"] { color: var(--danger); border-color: var(--danger); background: var(--warning-bg); }
+.chat-panel .chat-input-row { position: relative; }
+.chat-panel .chat-voice { flex: 0 0 auto; display: flex; align-items: center; }
+.chat-panel .chat-voice[data-active="true"] { position: absolute; inset: 0; z-index: 2; justify-content: center; padding: .25rem; border-radius: inherit; background: var(--surface-subtle); }
+/* The app's CSS is unlayered and would beat Tailwind's layered utilities on the recorder's buttons; hand those
+   buttons back to the Tailwind layers (see tweenly-ai-recorder-utils/review-theme.css). */
+.chat-panel .chat-voice .tweenly-recorder.tweenly-recorder button { all: revert-layer; }
+.chat-panel .chat-voice-status { display: flex; align-items: center; gap: .6rem; font-size: .8rem; color: var(--text-secondary); }

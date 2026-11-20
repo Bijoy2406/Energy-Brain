@@ -2,6 +2,9 @@ import type { components, operations } from './generated'
 
 type Schemas = components['schemas']
 export type PlanResponse = Schemas['PlanResponse']
+export type CloudRequest = Schemas['CloudRequest']
+export type CloudResponse = Schemas['CloudResponse']
+export type SlotOverride = Schemas['SlotOverride']
 export type DayInfo = Schemas['DayInfo']
 type ValidationDetail = Schemas['ValidationError']
 
@@ -46,17 +49,33 @@ export function createApiClient(
 ) {
   const base = baseUrl.replace(/\/+$/, '')
 
-  async function request<T>(path: string, method: 'GET' | 'POST', body?: unknown, signal?: AbortSignal): Promise<ApiResult<T>> {
+  function reportPath(month: string | null, weight?: number) {
+    const query = new URLSearchParams()
+    if (month) query.set('month', month)
+    if (weight !== undefined) query.set('weight', String(weight))
+    return `/report${query.size ? `?${query}` : ''}`
+  }
+
+  async function request<T>(path: string, method: 'GET' | 'POST', body?: unknown, signal?: AbortSignal, binary = false): Promise<ApiResult<T>> {
     const aborted = (error: unknown) => signal?.aborted || (isRecord(error) && error.name === 'AbortError')
     try {
       const response = await fetch(`${base}${path}`, {
         method, signal,
-        ...(body === undefined ? {} : {
+        ...(body === undefined ? {} : body instanceof Blob ? {
+          // A recording is sent as the raw request body with its own content type (POST /transcribe).
+          headers: { 'Content-Type': body.type || 'audio/webm' }, body,
+        } : {
           headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
         }),
       })
       let data: unknown
       try {
+        if (binary && response.ok) {
+          if (!response.headers.get('Content-Type')?.startsWith('application/pdf')) {
+            return { ok: false, error: { kind: 'response', status: response.status, message: 'API returned an invalid PDF response.' } }
+          }
+          return { ok: true, data: await response.blob() as T }
+        }
         data = await response.json()
       } catch (error) {
         if (aborted(error)) return { ok: false, error: { kind: 'aborted' } }
@@ -79,8 +98,14 @@ export function createApiClient(
   }
 
   return {
+    reportUrl: (month: string | null, weight?: number) => `${base}${reportPath(month, weight)}`,
+    downloadReport: (month: string | null, weight: number) =>
+      request<Blob>(reportPath(month, weight), 'GET', undefined, undefined, true),
     days: (signal?: AbortSignal) => request<Schemas['DaysResponse']>('/days', 'GET', undefined, signal),
     plan: (body: Schemas['PlanRequest'], signal?: AbortSignal) => request<PlanResponse>('/plan', 'POST', body, signal),
+    transcribe: (audio: Blob, language: 'auto' | 'en' = 'en', signal?: AbortSignal) =>
+      request<Schemas['TranscribeResponse']>(`/transcribe?language=${language}`, 'POST', audio, signal),
+    simulateCloud: (body: CloudRequest, signal?: AbortSignal) => request<CloudResponse>('/simulate/cloud', 'POST', body, signal),
     pareto: (date: string, signal?: AbortSignal) =>
       request<Schemas['ParetoResponse']>(`/pareto?date=${encodeURIComponent(date)}`, 'GET', undefined, signal),
     backtest: (query?: operations['backtest_backtest_get']['parameters']['query'], signal?: AbortSignal) =>

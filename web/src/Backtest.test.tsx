@@ -52,7 +52,7 @@ it('keeps date, slider, plan and chat draft mounted while tabs switch, with hash
   expect(planTab).toHaveAttribute('aria-selected', 'true')
   expect(window.location.hash).toBe('')
   expect(screen.getByRole('slider')).toHaveValue('0.3')
-  expect(screen.getByRole('combobox')).toHaveValue('2024-07-01')
+  expect(screen.getByRole('combobox', { name: 'Planning day' })).toHaveValue('2024-07-01')
   expect(screen.getByRole('textbox')).toHaveValue('My draft question')
   expect(screen.getByText('152,703')).toBeInTheDocument()
   await openBacktest()

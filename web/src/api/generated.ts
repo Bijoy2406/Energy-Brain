@@ -154,6 +154,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download savings and CO2 report
+         * @description Three A4 pages, adjusted totals, both baselines, all caveats and provenance.
+         *
+         *     Historical synthetic replay, not a live deployment or a guarantee. Deterministic bytes
+         *     cached in a 32-entry LRU; every download counts toward the sliding one-minute limit.
+         */
+        get: operations["report_report_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/transcribe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Turn a short voice recording into text for the chat box
+         * @description The page records a few seconds of audio and posts the raw bytes. The text is only put into the chat
+         *     input box by the page; it is never sent to the planner or stored. Silence and noise give `no_speech: true`
+         *     and an empty `text`, not an error. Audio is sent to Groq for transcription and is not stored or logged.
+         */
+        post: operations["transcribe_transcribe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/pareto": {
         parameters: {
             query?: never;
@@ -380,14 +425,14 @@ export interface components {
              * @description simulated duration; affected slots round up to whole slots and clip at end of day
              * @default 120
              */
-            duration_minutes: number;
+            duration_minutes?: number;
             /**
              * Kind
              * @description forecast what-if on a historical replay, not live data
              * @default simulated cloud event
              * @constant
              */
-            kind: "simulated cloud event";
+            kind?: "simulated cloud event";
         };
         /**
          * CloudRequest
@@ -424,7 +469,7 @@ export interface components {
              * @description simulated duration; affected slots round up to whole slots and clip at end of day
              * @default 120
              */
-            duration_minutes: number;
+            duration_minutes?: number;
         };
         /** CloudResponse */
         CloudResponse: {
@@ -643,7 +688,7 @@ export interface components {
              * Rounds
              * @default 0
              */
-            rounds: number;
+            rounds?: number;
             /** Model */
             model?: string | null;
             /** Prompt Version */
@@ -662,7 +707,7 @@ export interface components {
              * @description true = a stored verified demo answer, re-checked against this plan's tools before serving
              * @default false
              */
-            cached: boolean;
+            cached?: boolean;
             /**
              * Cached Recorded At
              * @description when the stored answer was recorded
@@ -716,7 +761,7 @@ export interface components {
              * Fallback Used
              * @default false
              */
-            fallback_used: boolean;
+            fallback_used?: boolean;
             /** Note */
             note?: string | null;
         };
@@ -783,6 +828,11 @@ export interface components {
              * @description an LLM key is set (the key itself is never returned)
              */
             llm_key_configured: boolean;
+            /**
+             * Transcription Available
+             * @description POST /transcribe can work (the same key is set)
+             */
+            transcription_available: boolean;
             /** Llm Model */
             llm_model: string;
             /**
@@ -905,13 +955,13 @@ export interface components {
              * @default 1 = cheapest, 0 = cleanest
              * @constant
              */
-            weights_meaning: "1 = cheapest, 0 = cleanest";
+            weights_meaning?: "1 = cheapest, 0 = cleanest";
             /**
              * Basis
              * @default planned totals at the P50 forecast, before settlement against actuals
              * @constant
              */
-            basis: "planned totals at the P50 forecast, before settlement against actuals";
+            basis?: "planned totals at the P50 forecast, before settlement against actuals";
             /** Points */
             points: components["schemas"]["ParetoPoint"][];
             /**
@@ -1053,17 +1103,17 @@ export interface components {
              * Solve Seconds
              * @default 0
              */
-            solve_seconds: number;
+            solve_seconds?: number;
             /**
              * Reserve Margin Kwh
              * @default 0
              */
-            reserve_margin_kwh: number;
+            reserve_margin_kwh?: number;
             /**
              * Fallback Used
              * @default false
              */
-            fallback_used: boolean;
+            fallback_used?: boolean;
             /** Notes */
             notes?: string[];
         };
@@ -1097,12 +1147,12 @@ export interface components {
              * Reserve Margin Kwh
              * @default 0
              */
-            reserve_margin_kwh: number;
+            reserve_margin_kwh?: number;
             /**
              * Replans
              * @default 0
              */
-            replans: number;
+            replans?: number;
         };
         /**
          * Schedule
@@ -1245,6 +1295,37 @@ export interface components {
              * @description change in planned diesel consumption, litres
              */
             diesel_litres: number;
+        };
+        /**
+         * TranscribeResponse
+         * @description Speech turned into text for the chat input box. Audio and text are not stored.
+         */
+        TranscribeResponse: {
+            /**
+             * Text
+             * @description what was said (at most 500 characters); empty when no speech was found
+             */
+            text: string;
+            /**
+             * Language
+             * @description en (the requested language, else what Whisper detected)
+             */
+            language: string;
+            /**
+             * Duration S
+             * @description length of the audio in seconds, as reported by the speech service
+             */
+            duration_s: number;
+            /**
+             * Model
+             * @description speech model used
+             */
+            model: string;
+            /**
+             * No Speech
+             * @description true when nothing but silence or noise was found (text is empty)
+             */
+            no_speech: boolean;
         };
         /** ValidationError */
         ValidationError: {
@@ -1549,6 +1630,145 @@ export interface operations {
                 };
             };
             /** @description all LLM slots busy, or no forecast could be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    report_report_get: {
+        parameters: {
+            query?: {
+                /** @description YYYY-MM inside the backtest; omit for full period */
+                month?: string | null;
+                /** @description A backtested weight; default: headline weight */
+                weight?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            /** @description reports/backtest.json does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Malformed query, month_not_in_backtest or weight_not_in_backtest */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"] | components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description 12 downloads per client/minute; 60 overall */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    transcribe_transcribe_post: {
+        parameters: {
+            query?: {
+                /** @description spoken language; auto lets the speech model detect it */
+                language?: "auto" | "en";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The raw audio bytes (no multipart): up to 2 MB, content type audio/webm, audio/ogg, audio/mp4, audio/mpeg or audio/wav (codec parameters such as `;codecs=opus` are accepted). */
+        requestBody: {
+            content: {
+                "audio/webm": string;
+                "audio/ogg": string;
+                "audio/mp4": string;
+                "audio/mpeg": string;
+                "audio/wav": string;
+                "audio/x-wav": string;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscribeResponse"];
+                };
+            };
+            /** @description audio larger than the limit (audio_too_large) */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description not a supported audio type (unsupported_audio) */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description empty body (empty_audio) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description too many requests (rate_limited) */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description the speech service failed (transcription_failed) */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description no key on the server, or all slots busy */
             503: {
                 headers: {
                     [name: string]: unknown;
