@@ -2198,7 +2198,8 @@ dd {
 button.demo-toggle { display: inline-flex; align-items: center; min-height: 44px; cursor: pointer; font: inherit; font-size: 0.75rem; }
 .demo-toggle[aria-pressed="true"] { border-color: var(--c-amber); }
 .demo-toggle:focus-visible { outline: 2px solid var(--c-amber); outline-offset: 3px; }
-.demo-guide { padding: 0.7rem max(1rem, calc((100vw - 1360px) / 2)); background: var(--surface); color: var(--text-primary); border-top: 1px solid var(--line-strong); display: flex; align-items: center; justify-content: space-between; gap: 1rem; box-shadow: var(--shadow-sm); }
+/* Inside the sticky header: stack above the aurora background layer, or it paints over the guide. */
+.demo-guide { position: relative; z-index: 2; margin-top: 0.7rem; padding: 0.7rem max(1rem, calc((100vw - 1360px) / 2)); background: var(--surface); color: var(--text-primary); border-top: 1px solid var(--line-strong); display: flex; align-items: center; justify-content: space-between; gap: 1rem; box-shadow: var(--shadow-sm); }
 .demo-guide > div { min-width: 0; }
 .demo-title { margin: 0; font-weight: 700; }
 .demo-description { margin: 0; font-size: 0.85rem; }
@@ -2258,3 +2259,22 @@ button.demo-toggle { display: inline-flex; align-items: center; min-height: 44px
    buttons back to the Tailwind layers (see tweenly-ai-recorder-utils/review-theme.css). */
 .chat-panel .chat-voice .tweenly-recorder.tweenly-recorder button { all: revert-layer; }
 .chat-panel .chat-voice-status { display: flex; align-items: center; gap: .6rem; font-size: .8rem; color: var(--text-secondary); }
+
+/* Phones: keep the three view tabs side by side in one row (smaller text and padding instead of wrapping). */
+@media (max-width: 520px) {
+  .page-tabs { display: flex; flex-wrap: nowrap; width: 100%; gap: 0.2rem; padding: 0.25rem; }
+  .page-tabs button {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0.5rem 0.4rem;
+    font-size: 0.74rem;
+    letter-spacing: -0.005em;
+    white-space: nowrap;
+    overflow-wrap: normal;
+    text-align: center;
+  }
+}
+@media (max-width: 360px) {
+  .page-tabs { gap: 0.15rem; padding: 0.2rem; }
+  .page-tabs button { padding: 0.5rem 0.25rem; font-size: 0.68rem; }
+}
