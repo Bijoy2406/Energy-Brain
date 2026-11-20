@@ -151,9 +151,12 @@ export default function App() {
         <div className="header-inner container-wrap">
           <div className="brand-cluster">
             <h1 className="brand-heading">
-              <ShinyText className="brand-sheen" color="transparent" shineColor="var(--on-brand)" speed={3} delay={5} shineWidth={18} disabled={reducedMotion}>
-                <img src="/logo-full-light.png" alt="Energy Brain" className="brand-logo" />
-              </ShinyText>
+              <span className="brand-lockup" aria-label="Gridpilot AI">
+                <ShinyText className="brand-sheen" color="transparent" shineColor="var(--on-brand)" speed={3} delay={5} shineWidth={18} disabled={reducedMotion}>
+                  <img src="/logo-mark-light.png" alt="" className="brand-logo" />
+                </ShinyText>
+                <span className="brand-name" aria-hidden="true">Gridpilot <strong>AI</strong></span>
+              </span>
             </h1>
             <span className="brand-subtitle">DHAKA MICROGRID · AI DISPATCH</span>
           </div>
@@ -176,7 +179,7 @@ export default function App() {
           <span>Synthetic load, simulated PV, synthetic outages. Historical replay.</span>
         </p>
         <main>
-          <div className="page-tabs" role="tablist" aria-label="Energy Brain views">
+          <div className="page-tabs" role="tablist" aria-label="Gridpilot AI views">
             {["Today's plan", 'Trade-off', 'Backtest results'].map((label, index) => <button key={label} type="button" role="tab"
               id={`${tabOrder[index]}-tab`} aria-controls={`${tabOrder[index]}-panel`}
               aria-selected={tabs.tab === tabOrder[index]} tabIndex={tabs.tab === tabOrder[index] ? 0 : -1}
@@ -230,7 +233,7 @@ export default function App() {
         <div className="footer-inner container-wrap">
           <div className="footer-grid">
             <div className="footer-brand">
-              <img src="/logo-full-light.png" alt="" className="footer-logo" />
+              <span className="brand-lockup footer-lockup" aria-hidden="true"><img src="/logo-mark-light.png" alt="" className="footer-logo" /><span className="brand-name">Gridpilot <strong>AI</strong></span></span>
               <p className="footer-title">Dhaka Commercial Microgrid</p>
               <p className="footer-desc">
                 Multi-agent dispatch optimizer scheduling solar PV, battery storage, EV charging, and diesel backup within HVAC comfort limits.
@@ -254,7 +257,7 @@ export default function App() {
             </div>
           </div>
           <div className="footer-bottom">
-            <span>Energy Brain · Site time: Asia/Dhaka</span>
+            <span>Gridpilot AI · Site time: Asia/Dhaka</span>
             <div className="footer-signature" aria-hidden="true">
               <span className="swatch" style={{ background: '#0B2545' }} />
               <span className="swatch" style={{ background: '#2F6FDB' }} />

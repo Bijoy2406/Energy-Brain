@@ -211,7 +211,7 @@ export default function ExplainerPanel({ date, weight, demoAsk = false }: { date
         <div className="chat-identity">
           <BotAvatar />
           <div className="chat-title">
-            <h2 id={`${id}-title`}>Energy Brain Assistant</h2>
+            <h2 id={`${id}-title`}>Gridpilot AI Assistant</h2>
             <p className="chat-subtitle"><span className="chat-online" aria-hidden="true" /><span className="chat-sr-only">Online · </span>Plan explainer</p>
           </div>
           <button type="button" className="chat-close" aria-label="Close plan explainer" onClick={close}>

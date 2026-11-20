@@ -114,7 +114,7 @@ def test_all_excluded_month_keeps_reasons_above_footer(report):
     positions = []
 
     def visit(text, cm, tm, font, size):
-        if text.strip() and not text.startswith("Energy Brain |") and text.strip() != "1 / 3":
+        if text.strip() and not text.startswith("Gridpilot AI |") and text.strip() != "1 / 3":
             positions.append(tm[5])
 
     text = reader.pages[0].extract_text(visitor_text=visit)

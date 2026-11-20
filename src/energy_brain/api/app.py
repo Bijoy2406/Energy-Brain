@@ -1,4 +1,4 @@
-"""Energy Brain dashboard API (#21).
+"""Gridpilot AI dashboard API (#21).
 
 Run (from the repo root, with the package installed)::
 
@@ -33,7 +33,7 @@ from energy_brain.api.static import mount_website
 logger = logging.getLogger(__name__)
 
 DESCRIPTION = """\
-REST API of Energy Brain for the React dashboard (#27-#33). A deterministic optimiser makes every decision;
+REST API of Gridpilot AI for the React dashboard (#27-#33). A deterministic optimiser makes every decision;
 the LLM Explainer only explains the plan with numbers taken from tool outputs.
 
 Response shapes are a contract: see `docs/api.md` and `docs/openapi.json` in the repository. Every plan says
@@ -59,7 +59,7 @@ def create_app(service: PlanService | None = None, settings: ApiSettings | None 
         yield
         service.shutdown()
 
-    app = FastAPI(title="Energy Brain API", version=__version__, description=DESCRIPTION, lifespan=lifespan)
+    app = FastAPI(title="Gridpilot AI API", version=__version__, description=DESCRIPTION, lifespan=lifespan)
     app.state.service = service
     app.add_middleware(GZipMiddleware, minimum_size=1024)
     app.add_middleware(

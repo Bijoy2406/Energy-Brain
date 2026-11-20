@@ -11,8 +11,8 @@ export default function SameDayComparison({ plan, source, selectedDate, onSeeLim
   const result = useBacktestDays(source, !outside && supported && current ? plan.weight : null)
   const day = result?.ok && Array.isArray(result.data.days) ? result.data.days.find((row) => row.date === selectedDate) : undefined
   const explanation = outside ? 'Date outside the backtest.' : !current ? `Waiting for the solved plan for ${selectedDate}.` : !supported ? 'Move the slider to 0, 0.5 or 1 to compare this day.' : null
-  return <section className="same-day-card chart-section" aria-label="Baseline vs Energy Brain, same day">
-    <h3>Baseline vs Energy Brain, same day</h3>
+  return <section className="same-day-card chart-section" aria-label="Baseline vs Gridpilot AI, same day">
+    <h3>Baseline vs Gridpilot AI, same day</h3>
     <p className="muted">synthetic data, 2024 replay · {selectedDate}{current && ` · solved w = ${plan.weight}`}</p>
     {explanation ? <p className="muted">{explanation} The backtest covers 2024 days at w = 0, 0.5 and 1.</p>
       : !result ? <p role="status">Loading same-day comparison…</p>
@@ -25,11 +25,11 @@ export default function SameDayComparison({ plan, source, selectedDate, onSeeLim
                   <thead><tr><th scope="col">Method</th><th scope="col">Cost (BDT)</th><th scope="col">CO2 (kg)</th></tr></thead>
                   <tbody>{(['optimiser', ...baselines] as const).map((key) => {
                     const method = day.methods[key]
-                    const name = key === 'optimiser' ? 'Energy Brain' : result.data.baseline_names[key]
+                    const name = key === 'optimiser' ? 'Gridpilot AI' : result.data.baseline_names[key]
                     const saving = key === 'optimiser' ? null : compareDailyCost(method?.adjusted_cost_bdt ?? null, day.methods.optimiser?.adjusted_cost_bdt ?? null)
                     return <tr key={key}>
                       <th scope="row">{name}{saving && <span className="daily-saving">
-                        Energy Brain {saving.difference >= 0 ? 'saves' : 'costs'} {formatBdt(Math.abs(saving.difference))} BDT{saving.difference < 0 && ' more'}
+                        Gridpilot AI {saving.difference >= 0 ? 'saves' : 'costs'} {formatBdt(Math.abs(saving.difference))} BDT{saving.difference < 0 && ' more'}
                         {' '}({saving.percent === null ? 'percentage unavailable: zero baseline cost' : savingWords(saving.percent, 'cost')})
                       </span>}</th>
                       <td>{method?.adjusted_cost_bdt == null ? 'Unavailable' : formatBdt(method.adjusted_cost_bdt)}</td>

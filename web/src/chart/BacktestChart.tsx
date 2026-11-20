@@ -14,8 +14,8 @@ function DailyTooltip({ row, name }: { row?: ChartRow; name: string }) {
     <p>{row.outage ? 'Load-shedding day (hatched bar)' : 'Other day (solid bar)'}</p>
     <dl>
       <div><dt>{name}</dt><dd>{formatBdt(row.baselineCost)} BDT</dd></div>
-      <div><dt>Energy Brain</dt><dd>{formatBdt(row.optimiserCost)} BDT</dd></div>
-      <div><dt>Energy Brain cost vs {name}</dt><dd>{formatBdt(Math.abs(row.difference))} BDT {row.difference >= 0 ? 'less' : 'more'}</dd></div>
+      <div><dt>Gridpilot AI</dt><dd>{formatBdt(row.optimiserCost)} BDT</dd></div>
+      <div><dt>Gridpilot AI cost vs {name}</dt><dd>{formatBdt(Math.abs(row.difference))} BDT {row.difference >= 0 ? 'less' : 'more'}</dd></div>
     </dl>
   </div>
 }
@@ -49,7 +49,7 @@ export default function BacktestChart({ result, weight }: { result: ApiResult<Da
       : !result.ok ? <p className="warning" role="alert">{result.error.kind !== 'aborted' && result.error.message}</p>
         : <>
           <h3 id={`${id}-label`}>Daily cost saved vs {name} (computed from the daily values returned by the API)</h3>
-          <p className="muted">Adjusted costs · BDT · w = {result.data.weight}. Positive bars mean Energy Brain costs less than {name}; negative bars mean it costs more. Excluded days and missing settlements are omitted.</p>
+          <p className="muted">Adjusted costs · BDT · w = {result.data.weight}. Positive bars mean Gridpilot AI costs less than {name}; negative bars mean it costs more. Excluded days and missing settlements are omitted.</p>
           <ul className="chart-legend" aria-label="Daily chart legend">
             <li><span className="backtest-outage-swatch" aria-hidden="true" />Load-shedding days: hatched bars</li>
             <li><span className="backtest-other-swatch" aria-hidden="true" />Other days: solid bars</li>

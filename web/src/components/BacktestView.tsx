@@ -10,8 +10,8 @@ import BacktestChart from '../chart/BacktestChart'
 import { useLimitsNavigation } from '../hooks/useLimitsNavigation'
 
 function ComparisonCard({ name, values, requested, onSeeLimits }: { name: string; values: Comparison; requested: number; onSeeLimits: () => void }) {
-  return <article tabIndex={0} className="panel comparison-card" aria-label={`Energy Brain vs ${name}`}>
-    <p className="eyebrow">ENERGY BRAIN VS BASELINE</p>
+  return <article tabIndex={0} className="panel comparison-card" aria-label={`Gridpilot AI vs ${name}`}>
+    <p className="eyebrow">GRIDPILOT AI VS BASELINE</p>
     <h3>{name}</h3>
     <p className="comparison-result"><AnimatedValue value={values.cost_saved_bdt} format={amount => `${savingWords(values.cost_saved_pct, 'cost')} (${formatBdt(Math.abs(amount))} BDT ${values.cost_saved_bdt >= 0 ? 'less' : 'more'})`} /></p>
     <p className="comparison-result"><AnimatedValue value={values.co2_saved_kg} format={amount => `${savingWords(values.co2_saved_pct, 'CO2')} (${formatKg(Math.abs(amount))} kg ${values.co2_saved_kg >= 0 ? 'less' : 'more'})`} /></p>
@@ -88,7 +88,7 @@ export default function BacktestView({ source, limitsRequest, onSeeLimits }: { s
   const report = result.data
   const selected = report.summary.by_weight[String(weight)]
   return <div className="backtest-view" ref={content}>
-    <div><h2>Backtest results</h2><p className="muted">Baseline vs Energy Brain · adjusted settlement · synthetic data, 2024 replay</p></div>
+    <div><h2>Backtest results</h2><p className="muted">Baseline vs Gridpilot AI · adjusted settlement · synthetic data, 2024 replay</p></div>
     <div className="segmented-control backtest-weights" role="group" aria-label="Backtest weight">
       {([[0.5, 'Balanced w = 0.5 (headline)'], [1, 'Cheapest w = 1'], [0, 'Cleanest w = 0']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={weight === value} onClick={() => setWeight(value)}>{label}</button>)}
     </div>

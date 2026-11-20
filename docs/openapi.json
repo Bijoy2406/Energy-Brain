@@ -1,8 +1,8 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Energy Brain API",
-    "description": "REST API of Energy Brain for the React dashboard (#27-#33). A deterministic optimiser makes every decision;\nthe LLM Explainer only explains the plan with numbers taken from tool outputs.\n\nResponse shapes are a contract: see `docs/api.md` and `docs/openapi.json` in the repository. Every plan says\nwhether it is safe to execute (`safe`) and whether a fallback forecast or signal was used (`banners`).\nBacktest numbers come from `reports/backtest.json` and must be shown with their caveats.\n",
+    "title": "Gridpilot AI API",
+    "description": "REST API of Gridpilot AI for the React dashboard (#27-#33). A deterministic optimiser makes every decision;\nthe LLM Explainer only explains the plan with numbers taken from tool outputs.\n\nResponse shapes are a contract: see `docs/api.md` and `docs/openapi.json` in the repository. Every plan says\nwhether it is safe to execute (`safe`) and whether a fallback forecast or signal was used (`banners`).\nBacktest numbers come from `reports/backtest.json` and must be shown with their caveats.\n",
     "version": "0.1.0"
   },
   "paths": {

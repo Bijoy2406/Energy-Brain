@@ -164,7 +164,7 @@ class _Page:
 
     def end(self, number: int, period: str) -> None:
         self.canvas.setFont("Helvetica", 8)
-        self.canvas.drawString(42, 25, f"Energy Brain | {period} | Historical synthetic replay")
+        self.canvas.drawString(42, 25, f"Gridpilot AI | {period} | Historical synthetic replay")
         self.canvas.drawRightString(553, 25, f"{number} / 3")
         self.canvas.showPage()
 
@@ -254,11 +254,11 @@ def render_report(data: ReportData) -> bytes:
     """Three A4 pages with invariant PDF metadata/IDs and only built-in Helvetica fonts."""
     output = io.BytesIO()
     canvas = Canvas(output, pagesize=A4, invariant=1, pageCompression=1)
-    canvas.setTitle("Energy Brain: savings and CO2 report")
-    canvas.setAuthor("Energy Brain")
+    canvas.setTitle("Gridpilot AI: savings and CO2 report")
+    canvas.setAuthor("Gridpilot AI")
     canvas.setSubject("Historical replay on synthetic data")
     page = _Page(canvas)
-    page.heading("Energy Brain: savings and CO2 report")
+    page.heading("Gridpilot AI: savings and CO2 report")
     page.text(f"Period: {data.period} | Optimiser weight: {data.weight:g} (1 = cheapest, 0 = cleanest)")
     canvas.setFillColorRGB(0.98, 0.95, 0.86)
     canvas.setStrokeColorRGB(0.65, 0.46, 0.13)
