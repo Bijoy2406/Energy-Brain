@@ -1,4 +1,4 @@
-# Energy Brain
+# Gridpilot
 
 Multi-agent AI controller that plans a commercial site's solar, battery, flexible loads (HVAC, EV charging) and
 diesel generator for the next 24 hours, to cut electricity cost and CO2. A deterministic optimiser makes every
