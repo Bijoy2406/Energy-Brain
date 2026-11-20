@@ -1,6 +1,6 @@
 # Data Sources & AI Provenance
 
-This document records the exact data sources, variables, units, coverage dates, access terms, and preprocessing logic used across Energy Brain.
+This document records the exact data sources, variables, units, coverage dates, access terms, and preprocessing logic used across Gridpilot AI.
 
 All data used in the MVP is free, public, and reproducible offline from cached files.
 
@@ -207,7 +207,7 @@ Parameters are stored in `config/signals.yaml` and loaded via `energy_brain.data
 ### Rationale & Industrial Load-Shedding Context
 Grid outages (load-shedding) are a frequent reality for industrial zones in Bangladesh, particularly in peri-urban manufacturing hubs like Ashulia and Savar. When the national grid fails, factories must immediately start diesel backup generators to keep production lines running at high fuel expense ($28.89\text{ BDT/kWh}$) and higher carbon emissions ($0.724\text{ kg CO}_2/\text{kWh}$).
 
-The outage calendar models rotational load-shedding to demonstrate how Energy Brain:
+The outage calendar models rotational load-shedding to demonstrate how Gridpilot AI:
 1. **Pre-charges the battery** from solar or cheaper off-peak grid electricity before a planned outage window.
 2. **Pre-cools the factory** via the flexible HVAC system prior to the outage.
 3. **Discharges the battery** during the outage, minimizing or completely avoiding the need to run the diesel generator.

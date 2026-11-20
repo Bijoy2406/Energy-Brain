@@ -25,7 +25,7 @@ it('downloads the selected month and weight through the API and releases the blo
   Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: create })
   Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: revoke })
   const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
-    expect(this.download).toBe('energy-brain-report-2024-07.pdf')
+    expect(this.download).toBe('gridpilot-report-2024-07.pdf')
     expect(this.href).toBe('blob:report')
   })
   const { rerender } = render(<ReportDownload firstDay="2024-01-01" lastDay="2024-12-31" weight={0.5} />)

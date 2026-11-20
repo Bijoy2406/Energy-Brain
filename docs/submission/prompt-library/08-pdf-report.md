@@ -9,7 +9,7 @@ The prompt exactly as given to the coding agent:
 
 ---
 
-Implement GitHub issue #26 in the Energy Brain repo: a downloadable monthly savings and CO2 report as a PDF for the owner / CFO (PRD FR-13). Backend first, plus one small download control in the web UI. Do NOT commit, push or touch git.
+Implement GitHub issue #26 in the Gridpilot AI repo: a downloadable monthly savings and CO2 report as a PDF for the owner / CFO (PRD FR-13). Backend first, plus one small download control in the web UI. Do NOT commit, push or touch git.
 
 Read first: reports/backtest.json (structure: `report`, `caveats`, `headline`, `summary.by_weight`, `config`, `days[].methods[]` with `method` = optimiser / baseline_solar_first / baseline_time_of_use, `adjusted_cost_bdt`, `adjusted_co2_kg`, `generator_hours`, `diesel_litres`, `unserved_kwh`, `included`, `outage_slots`), src/energy_brain/api/backtest_view.py, api/routers/backtest.py (error style `api_error`, 404 `backtest_unavailable`), api/service.py (`service.backtest()`), api/app.py (router registration, reserved routes in api/static.py), api/models.py, config/ (tariff, emission and diesel values: use the project's existing constants, do not retype them), docs/api.md, tests/test_api.py, web/src/components/BacktestView.tsx and web/src/api/client.ts.
 
@@ -24,7 +24,7 @@ Read first: reports/backtest.json (structure: `report`, `caveats`, `headline`, `
 ## PDF content (A4, 2-3 pages max)
 Use a small pure-Python library: add `fpdf2` (or `reportlab` if you find fpdf2 unsuitable) to `pyproject.toml` dependencies and requirements.txt if that file lists runtime dependencies. Use only built-in fonts, so keep all text ASCII/Latin-1 safe: write "BDT" (not the taka sign), "CO2", "-" for dashes, no emoji.
 Page 1:
-- Title "Energy Brain: savings and CO2 report", period (month or full year), optimiser weight and what it means (1 = cheapest, 0 = cleanest), and a clearly visible box "Historical replay on synthetic data" stating: synthetic load, simulated PV, synthetic outages, 2024 out-of-sample days, not a live deployment and not a guarantee of future savings.
+- Title "Gridpilot AI: savings and CO2 report", period (month or full year), optimiser weight and what it means (1 = cheapest, 0 = cleanest), and a clearly visible box "Historical replay on synthetic data" stating: synthetic load, simulated PV, synthetic outages, 2024 out-of-sample days, not a live deployment and not a guarantee of future savings.
 - Headline table for the period, for each baseline (solar-first / charge-on-arrival rule and simple time-of-use rule, use the names from `headline.baseline_names`): optimiser cost, baseline cost, savings in BDT and in percent; optimiser CO2, baseline CO2, change in kg and percent. Signed numbers: a CO2 increase must show as an increase (at w = 0.5 the optimiser's CO2 is slightly HIGHER than the solar-first baseline in the full-year headline; the report must say so plainly, never hide or round it away).
 - Also: days included (and excluded with reason if any), days with an outage, generator hours and diesel litres for the optimiser vs each baseline, unserved energy (must be 0, show it).
 Page 2:

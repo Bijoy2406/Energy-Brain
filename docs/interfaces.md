@@ -1,6 +1,6 @@
 # Agent interfaces (contract)
 
-This is the contract every Energy Brain agent codes against (issue #13). The code is the source of truth:
+This is the contract every Gridpilot AI agent codes against (issue #13). The code is the source of truth:
 [`schemas.py`](../src/energy_brain/schemas.py), [`interfaces.py`](../src/energy_brain/interfaces.py),
 [`timeaxis.py`](../src/energy_brain/timeaxis.py), [`accounting.py`](../src/energy_brain/accounting.py),
 [`orchestrator.py`](../src/energy_brain/orchestrator.py). Placeholders for development are in

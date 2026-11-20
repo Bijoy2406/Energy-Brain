@@ -1,5 +1,5 @@
 {
- "report": "Energy Brain backtest (#20)",
+ "report": "Gridpilot AI backtest (#20)",
  "schema_version": 1,
  "caveats": [
   "Out-of-sample: test days are in 2024; the forecast models were trained on 2022-2023 (reports/forecast_metrics.json).",

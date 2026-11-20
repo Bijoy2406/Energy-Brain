@@ -1,10 +1,10 @@
-# Energy Brain — PRD
+# Gridpilot AI — PRD (hackathon challenge: Energy Brain)
 
 Nov 16, 2026 · @Siuuuuuuuu
 
 ## 1. Overview and problem
 
-Energy Brain is a multi-agent AI controller that schedules a commercial site's flexible energy loads to cut electricity cost and CO2, with every decision explained and backtested. It is our entry for the **ClimateSphere AI → Energy Brain** challenge ("Smart energy optimization and demand response") at the International AI Builders Congress 2026.
+Gridpilot AI is a multi-agent AI controller that schedules a commercial site's flexible energy loads to cut electricity cost and CO2, with every decision explained and backtested. It is our entry for the **ClimateSphere AI → Gridpilot AI** challenge ("Smart energy optimization and demand response") at the International AI Builders Congress 2026.
 
 **The problem.** Bangladeshi commercial and industrial sites (garment factories, hospitals, cold storage, office towers) pay peak tariffs, lose production to load-shedding, and burn diesel in backup generators. Many are adding rooftop solar and batteries, but run them on fixed rules such as "charge when the sun is up" or "start the generator when the grid drops". Those rules ignore tomorrow's solar forecast, tariff windows and grid carbon, so money and emissions are left on the table.
 
@@ -42,7 +42,7 @@ The MVP succeeds if a backtest on real weather data shows lower cost and lower C
 
 The primary buyer is a factory or facility owner who wants a lower energy bill; the daily user is the site's energy or maintenance engineer.
 
-| Persona | Role | Need | What Energy Brain gives them |
+| Persona | Role | Need | What Gridpilot AI gives them |
 | --- | --- | --- | --- |
 | Facility engineer (primary user) | Runs the solar, battery, generator and HVAC day to day | A plan for tomorrow they can trust and override | 24 h schedule at 15-min steps, "why" answers, alerts when the forecast drifts |
 | Owner / CFO (buyer) | Pays the bill, reports to export buyers | Proof of savings and CO2 cuts | Monthly savings and CO2 report against a stated baseline |
@@ -77,7 +77,7 @@ The MVP models one site in Dhaka with rooftop solar, one battery, one flexible H
 
 Seven agents split the work so that a deterministic optimiser makes every decision and the LLM only explains it.
 
-&#91;embedded content: Energy Brain agents · 7 agents, 1 dashboard\]
+&#91;embedded content: Gridpilot AI agents · 7 agents, 1 dashboard\]
 
 Forecast, Signal and Asset agents run first and feed the Planner; the Risk agent checks each plan against the pessimistic solar forecast and sends it back for re-planning if it fails. The Explainer calls the other agents as tools to answer questions, and the Evaluator replays past days through the Planner to measure savings.
 
@@ -157,14 +157,14 @@ The optimiser decides and the LLM only explains, so a hallucination can never ch
 
 ## 9. Business model and go-to-market
 
-We sell Energy Brain as SaaS per site, sold through solar and battery installers, with a savings-share option so the customer pays only from money saved.
+We sell Gridpilot AI as SaaS per site, sold through solar and battery installers, with a savings-share option so the customer pays only from money saved.
 
 | Element | Plan |
 | --- | --- |
 | Customer | Bangladeshi C&I sites with rooftop solar, battery or diesel backup: RMG factories first, then hospitals, cold storage, commercial towers |
 | Value proposition | Lower monthly energy bill and less diesel, plus auditable CO2 numbers that export buyers increasingly ask for |
 | Pricing | Option A: monthly subscription per site, tiered by kW. Option B: share of verified savings. Prices to set after first pilot |
-| Channel | Partner with solar EPC and battery installers; they bundle Energy Brain as a software upsell that proves ROI |
+| Channel | Partner with solar EPC and battery installers; they bundle Gridpilot AI as a software upsell that proves ROI |
 | Expansion | Same software for South and Southeast Asian markets with time-of-use tariffs and unreliable grids; later, aggregated sites join grid demand-response programmes |
 | NRB / global collaboration | Recruit NRB energy engineers and data scientists as advisors and pilot introducers abroad; open plugin interface for regional tariff and carbon data |
 | Validation plan | Before Dec 26: interview 3–5 facility engineers or installers, get one letter of intent or data-sharing agreement |
@@ -176,7 +176,7 @@ Payback for the customer is shown in the demo from the backtest savings against 
 
 Each of the Congress's six judging criteria maps to a feature we can show on stage in the 3-minute pitch slot.
 
-| Criterion (weight) | What judges look for | How Energy Brain answers |
+| Criterion (weight) | What judges look for | How Gridpilot AI answers |
 | --- | --- | --- |
 | Innovation (20%) | Non-obvious, systems-level AI | Uncertainty-aware multi-agent VPP with a grounded explainer; dual cost/carbon objective |
 | Technical execution (20%) | Clear input → processing → output, model choice, explainability | Quantile forecaster + MILP planner + Risk re-plan; architecture diagram; LLM never decides |
@@ -188,7 +188,7 @@ Each of the Congress's six judging criteria maps to a feature we can show on sta
 **3-minute demo script**
 
 1. **0:00–0:30 Problem.** One Dhaka factory: peak tariff, load-shedding, diesel generator, solar on the roof run by fixed rules.
-2. **0:30–1:15 Side by side.** Same historical day: baseline schedule vs Energy Brain. Totals show cost and CO2 saved.
+2. **0:30–1:15 Side by side.** Same historical day: baseline schedule vs Gridpilot AI. Totals show cost and CO2 saved.
 3. **1:15–1:45 Slider.** Move cost↔carbon; the schedule and totals change live.
 4. **1:45–2:15 Cloud event.** Trigger a solar drop; the Risk agent re-plans in seconds and keeps the EV and comfort targets.
 5. **2:15–2:35 Ask why.** "Why did you run the generator at 7 PM?" The answer cites forecast, tariff and battery state.

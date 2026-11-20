@@ -1,4 +1,4 @@
-# Energy Brain API (issue #21)
+# Gridpilot AI API (issue #21)
 
 REST API for the React dashboard (#27–#33). The machine-readable contract is
 [`docs/openapi.json`](openapi.json), so you can build the frontend without running the server. Interactive docs are
@@ -291,11 +291,11 @@ run) gives 422 `weight_not_in_backtest`. If the report is missing, both endpoint
 Download an A4 PDF for the owner / CFO (FR-13):
 
 ```bash
-curl -f 'localhost:8000/report?month=2024-07&weight=0.5' -o energy-brain-report-2024-07.pdf
+curl -f 'localhost:8000/report?month=2024-07&weight=0.5' -o gridpilot-report-2024-07.pdf
 ```
 
 The response is `application/pdf`, with
-`Content-Disposition: attachment; filename="energy-brain-report-2024-07.pdf"`.
+`Content-Disposition: attachment; filename="gridpilot-report-2024-07.pdf"`.
 `month` is `YYYY-MM` inside `config.first_day` through `config.last_day` in the backtest
 (currently 2024-01 .. 2024-12). Omit it for the whole period, labelled "2024 full year";
 the full-period filename includes the first and last dates. `weight` defaults to the headline

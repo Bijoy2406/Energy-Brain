@@ -9,7 +9,7 @@ The prompt exactly as given to the coding agent:
 
 ---
 
-Implement GitHub issue #24 in the Energy Brain repo: the Explainer accepts questions in Bangla and answers in Bangla, with the same grounding rule as English (every number traced to a tool output). Text first; browser voice (speech input and output) second and optional. Do NOT commit, push or touch git. Use the project venv: `.venv-linux/bin/python`.
+Implement GitHub issue #24 in the Gridpilot AI repo: the Explainer accepts questions in Bangla and answers in Bangla, with the same grounding rule as English (every number traced to a tool output). Text first; browser voice (speech input and output) second and optional. Do NOT commit, push or touch git. Use the project venv: `.venv-linux/bin/python`.
 
 Read first: src/energy_brain/explainer/agent.py (LANGUAGES, `ask(... language)`, the language refusal, system prompt substitution of {{language}}, retry/ground prompts), explainer/verify.py (the whole module: tokeniser, unit words, facts, match rule), explainer/llm.py, explainer/tools.py (tool outputs; they stay English/ASCII), prompts/explainer_system.md, prompts/explainer_retry.md, prompts/explainer_ground.md, prompts/explainer_demo_questions.yaml, api/models.py (ExplainRequest, ExplainResponse), api/routers/explain.py, api/service.py (`explain`), api/demo_answers.py (stored answers, `record-demo-answers`), tests/test_explainer.py, tests/test_api.py, web/src/components/ExplainerPanel.tsx, web/src/components/AnswerText.tsx, web/index.html, web/src/App.css, web/src/Explainer.test.tsx. Keep every existing test green without weakening it, and keep English behaviour and cached English demo answers byte-identical.
 

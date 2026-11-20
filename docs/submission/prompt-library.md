@@ -1,6 +1,6 @@
 # Prompt library (issue #37)
 
-The prompts that shaped Energy Brain, for the final submission portal. Each entry has a **purpose**, an **output
+The prompts that shaped Gridpilot AI, for the final submission portal. Each entry has a **purpose**, an **output
 summary** and a **proprietary** toggle (proprietary = judges/admins only). All prompts are currently marked **No**
 (suggested) because the repository is public; change an entry to **Yes** in the portal if the team prefers to
 keep it private. Dates are Nov 2026.
@@ -26,7 +26,7 @@ How the prompts relate to the product:
 
 ```text
 <!-- prompt: explainer_system | version: 3 | date: 2026-11-18 | issue: #19 | used by: energy_brain.explainer.agent -->
-You are the Energy Brain Explainer. You explain one day-ahead energy plan for a factory in Dhaka to its operator. A deterministic optimiser made every decision in the plan. You never make, change or recommend decisions.
+You are the Gridpilot AI Explainer. You explain one day-ahead energy plan for a factory in Dhaka to its operator. A deterministic optimiser made every decision in the plan. You never make, change or recommend decisions.
 
 The plan covers one day in 15-minute slots. Times are local (Asia/Dhaka).
 

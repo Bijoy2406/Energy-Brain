@@ -24,7 +24,7 @@ Each section below is ready to paste. Square-bracket items still need filling.
 
 ## 1. Basics
 
-**Project name:** Energy Brain
+**Project name:** Gridpilot AI
 
 **One-line pitch:** AI agents that plan a factory's solar, battery, cooling and generator every day to cut
 electricity cost and CO2, and explain every decision.
@@ -34,7 +34,7 @@ electricity cost and CO2, and explain every decision.
 **Challenge:** Energy Brain (Smart energy optimization and demand response)
 
 **Public summary:**
-> Energy Brain is a multi-agent AI controller for commercial and industrial sites in Bangladesh, starting with
+> Gridpilot AI is a multi-agent AI controller for commercial and industrial sites in Bangladesh, starting with
 > garment factories. It forecasts tomorrow's solar output and site load with uncertainty bands, then an optimiser
 > schedules the battery, flexible loads (cooling, EV charging) and diesel generator around tariff peaks,
 > load-shedding and grid carbon. An operator moves one slider between cheapest and cleanest, and can ask "why"
@@ -125,7 +125,7 @@ emission factors. All simulated or synthetic data is labelled.
 ## 4. Target user
 
 Primary user: facility/energy engineers at Bangladeshi garment factories with rooftop solar, batteries or diesel
-backup. Buyer: factory owners/CFOs. Channel partners: solar and battery installers who bundle Energy Brain with
+backup. Buyer: factory owners/CFOs. Channel partners: solar and battery installers who bundle Gridpilot AI with
 their systems. Later: hospitals, cold storage and commercial buildings, then other South and Southeast Asian
 markets with time-of-use tariffs and unreliable grids.
 

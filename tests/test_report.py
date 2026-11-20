@@ -41,7 +41,7 @@ def test_report_pdf_headers_content_and_reproducibility(service, report):
         assert response.status_code == 200
         assert response.headers["content-type"] == "application/pdf"
         assert response.headers["content-disposition"] == (
-            'attachment; filename="energy-brain-report-2024-07.pdf"'
+            'attachment; filename="gridpilot-report-2024-07.pdf"'
         )
         assert response.content.startswith(b"%PDF")
         assert client.get("/report?month=2024-07&weight=0.5").content == response.content

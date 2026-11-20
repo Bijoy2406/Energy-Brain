@@ -109,7 +109,7 @@ def tiny_backtest() -> dict:
         return rows
 
     return {
-        "report": "Energy Brain backtest (#20)",
+        "report": "Gridpilot AI backtest (#20)",
         "schema_version": 1,
         "caveats": ["Synthetic load (placeholder caveat).", "Observed weather as forecast input (tier-0)."],
         "headline": {

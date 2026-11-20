@@ -368,7 +368,7 @@ def build_report(
     summary = summarise(days, weights, headline_weight)
     return _round(
         {
-            "report": "Energy Brain backtest (#20)",
+            "report": "Gridpilot AI backtest (#20)",
             "schema_version": SCHEMA_VERSION,
             "caveats": list(CAVEATS),
             "headline": headline(summary, config),

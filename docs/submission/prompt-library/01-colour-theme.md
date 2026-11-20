@@ -9,7 +9,7 @@ The prompt exactly as given to the coding agent:
 
 ---
 
-Recolour the Energy Brain web UI (web/ only) from the crimson/brown theme to the "Navy + solar" energy palette. Do NOT commit, push or touch git. Change colours only: no layout, copy, font or feature changes.
+Recolour the Gridpilot AI web UI (web/ only) from the crimson/brown theme to the "Navy + solar" energy palette. Do NOT commit, push or touch git. Change colours only: no layout, copy, font or feature changes.
 
 Palette:
 - navy #0B2545 (header, footer, headings/primary text, replaces obsidian/mahogany/crimson as the brand)

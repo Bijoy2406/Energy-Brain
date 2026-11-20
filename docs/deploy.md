@@ -1,4 +1,4 @@
-# Deploy Energy Brain to Hugging Face Spaces
+# Deploy Gridpilot AI to Hugging Face Spaces
 
 This publishes one Docker container serving the built dashboard and FastAPI API on port 7860.
 You create the Space and push its separate Git repository; nothing here deploys automatically from GitHub.
@@ -27,7 +27,7 @@ The Hugging Face token is for uploading code. The Groq key below is a different 
 ## 2. Export the working tree
 
 You need Git, Bash and the `sha256sum`, `wc` and `awk` utilities (Linux/WSL or Git Bash on Windows;
-on macOS install GNU coreutils for `sha256sum`). From the Energy Brain repository root:
+on macOS install GNU coreutils for `sha256sum`). From the Gridpilot AI repository root:
 
 ```bash
 bash scripts/make_hf_space.sh
@@ -120,13 +120,13 @@ git remote add origin https://huggingface.co/spaces/<user>/<space>
 git fetch origin main
 git reset --mixed origin/main
 git add --all
-git commit -m "Deploy Energy Brain"
+git commit -m "Deploy Gridpilot AI"
 git push -u origin main
 ```
 
 The fetch/reset uses the initial README commit that Hugging Face created as the parent of your upload,
 while keeping the exported working files. This avoids a force push or unrelated histories.
-Run these commands inside the exported folder, which is its own Git repository, not at the Energy Brain root.
+Run these commands inside the exported folder, which is its own Git repository, not at the Gridpilot AI root.
 At the credential prompt, use the write token as the password. If the Space was created without a `main`
 branch, skip the fetch/reset pair on the first upload.
 
@@ -192,7 +192,7 @@ A sleeping Space does not provide an always-on service; see [Space lifecycle](ht
 
 ## 7. Redeploy after changes
 
-Return to the Energy Brain root. After a retrain or data change, regenerate and review the reports using
+Return to the Gridpilot AI root. After a retrain or data change, regenerate and review the reports using
 the two commands in Step 2 first. Rerun the script into a fresh directory to refresh the shipped files;
 the old Space export does not update automatically:
 
@@ -227,8 +227,8 @@ change, frontend rebuild or key in a Git commit is needed.
 When Docker is available elsewhere, an optional image check from the exported folder is:
 
 ```bash
-docker build -t energy-brain-demo .
-docker run --rm -p 7860:7860 energy-brain-demo
+docker build -t gridpilot-demo .
+docker run --rm -p 7860:7860 gridpilot-demo
 ```
 
 This command runs without a key; matching stored answers work, while other questions report missing live access.

@@ -6,7 +6,7 @@ rest is the evidence behind it. Dates are Nov 2026. Detailed variable lists and 
 
 ## 1. Text to paste into the portal
 
-> **Data.** Energy Brain schedules a simulated garment factory in Ashulia/Savar, Dhaka. We use **no personal data and
+> **Data.** Gridpilot AI schedules a simulated garment factory in Ashulia/Savar, Dhaka. We use **no personal data and
 > no proprietary or licensed data**. Weather (2022-2024) is real, public data from NASA POWER, with Open-Meteo as a
 > backup. Everything that depends on the factory itself is **simulated or synthetic and labelled as such in the
 > product**: solar output is simulated from the weather with pvlib; the factory load and the grid load-shedding

@@ -140,7 +140,7 @@ git remote add origin https://huggingface.co/spaces/<user>/<space>
 git fetch origin main
 git reset --mixed origin/main
 git add --all
-git commit -m "Deploy Energy Brain"
+git commit -m "Deploy Gridpilot AI"
 git push -u origin main
 COMMANDS
 printf '\nUse your Hugging Face username and write token at the Git credential prompt.\n'

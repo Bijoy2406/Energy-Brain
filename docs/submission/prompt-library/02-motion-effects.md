@@ -9,11 +9,11 @@ The prompt exactly as given to the coding agent:
 
 ---
 
-Add tasteful 3D / motion "wow" effects to the Energy Brain web UI (web/ only). Do NOT commit, push or touch git. Keep the Navy + solar palette (navy #0B2545, blue #2F6FDB, amber #F5A623, teal #14A38B, orange #C2410C). The React Bits components are already downloaded in web/src/fx/ (Lightning, Aurora, TiltedCard, ShinyText, CountUp .tsx/.css; npm deps motion and ogl are installed). Fix their TS/lint errors without changing behaviour; adapt, don't rewrite.
+Add tasteful 3D / motion "wow" effects to the Gridpilot AI web UI (web/ only). Do NOT commit, push or touch git. Keep the Navy + solar palette (navy #0B2545, blue #2F6FDB, amber #F5A623, teal #14A38B, orange #C2410C). The React Bits components are already downloaded in web/src/fx/ (Lightning, Aurora, TiltedCard, ShinyText, CountUp .tsx/.css; npm deps motion and ogl are installed). Fix their TS/lint errors without changing behaviour; adapt, don't rewrite.
 
 Effects to add:
 1. Header hero: an Aurora (or Lightning, whichever looks better on navy; energy theme) WebGL background behind the header content, colours from the palette, low opacity so header text keeps WCAG AA contrast. Pointer-events none.
-2. Brand title "Energy Brain" with a subtle ShinyText sheen.
+2. Brand title "Gridpilot AI" with a subtle ShinyText sheen.
 3. KPI numbers in the daily overview / summary cards (cost, CO2, savings, etc. — find them in App.tsx and the dashboard components) animate with CountUp when scrolled into view. Must display the exact same final formatted numbers as now (same decimals, units, thousands separators); existing tests asserting those numbers must still pass.
 4. 3D tilt (perspective, TiltedCard style or a lighter custom CSS/JS tilt) on the KPI/summary cards on hover, with a soft light glare. Content must stay selectable and keyboard accessible; no layout shift.
 5. Staggered fade/slide-in on tab content and cards (motion), and a gentle animated energy-flow accent (e.g. a moving amber-to-teal line under the header or tab bar).

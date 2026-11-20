@@ -1,4 +1,4 @@
-"""Rule-based baselines for the backtest (#20): what a site runs today without Energy Brain.
+"""Rule-based baselines for the backtest (#20): what a site runs today without Gridpilot AI.
 
 Two baselines from PRD section 2, built on the same assets, signals, outages and hard constraints as the
 optimiser (``planner.rules`` interprets every constraint, ``planner.checks.find_violations`` verifies the

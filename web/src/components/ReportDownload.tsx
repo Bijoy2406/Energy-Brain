@@ -29,7 +29,7 @@ export default function ReportDownload({ firstDay, lastDay, weight }: {
       try {
         const link = document.createElement('a')
         link.href = url
-        link.download = `energy-brain-report-${month || `${firstDay}_to_${lastDay}`}.pdf`
+        link.download = `gridpilot-report-${month || `${firstDay}_to_${lastDay}`}.pdf`
         document.body.appendChild(link)
         link.click()
         link.remove()

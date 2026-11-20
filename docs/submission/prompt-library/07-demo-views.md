@@ -9,9 +9,9 @@ The prompt exactly as given to the coding agent:
 
 ---
 
-Implement GitHub issue #33 in the Energy Brain web UI (web/ only): cloud-event view, operator override control, a guided demo flow, and a mobile check. Do NOT commit, push or touch git. No backend changes (the endpoints already exist; if you find a real backend bug, report it instead of fixing it).
+Implement GitHub issue #33 in the Gridpilot AI web UI (web/ only): cloud-event view, operator override control, a guided demo flow, and a mobile check. Do NOT commit, push or touch git. No backend changes (the endpoints already exist; if you find a real backend bug, report it instead of fixing it).
 
-Read first: web/src/App.tsx (tabs, PlanPanel, PlanSummary, state), web/src/api/client.ts and web/src/api/generated.ts (types for POST /simulate/cloud = CloudRequest/CloudResponse, POST /plan with `overrides` = SlotOverride and the `override` block in PlanResponse), web/src/components/TradeoffView.tsx and web/src/chart/* (Recharts chart style, colour variables, tooltip style), web/src/hooks/usePareto.ts (hook pattern with abort, rate-limit retry), web/src/components/ExplainerPanel.tsx, web/src/App.css (design tokens: light and dark themes via CSS variables; use ONLY variables, no hard-coded colours), web/src/skeleton.css, Energy Brain — PRD.md section 10 (3-minute demo script). Follow existing code style, accessibility patterns, test patterns (Vitest + RTL, retry-safe helpers in web/src/test/), and keep every existing test green without weakening it.
+Read first: web/src/App.tsx (tabs, PlanPanel, PlanSummary, state), web/src/api/client.ts and web/src/api/generated.ts (types for POST /simulate/cloud = CloudRequest/CloudResponse, POST /plan with `overrides` = SlotOverride and the `override` block in PlanResponse), web/src/components/TradeoffView.tsx and web/src/chart/* (Recharts chart style, colour variables, tooltip style), web/src/hooks/usePareto.ts (hook pattern with abort, rate-limit retry), web/src/components/ExplainerPanel.tsx, web/src/App.css (design tokens: light and dark themes via CSS variables; use ONLY variables, no hard-coded colours), web/src/skeleton.css, Gridpilot AI — PRD.md section 10 (3-minute demo script). Follow existing code style, accessibility patterns, test patterns (Vitest + RTL, retry-safe helpers in web/src/test/), and keep every existing test green without weakening it.
 
 ## 1. API client
 Add `api.simulateCloud(body, signal)` and make `api.plan` accept `overrides` (types come from generated.ts). Map errors like the other calls (422 `invalid_overrides` message, rate_limited with retry_after_s).
@@ -37,7 +37,7 @@ The Pareto frontier chart already exists on the Trade-off tab: do not rebuild it
 ## 4. Guided demo flow (PRD section 10 script)
 Add a "Demo mode" toggle in the header area (next to the existing pills, matching their style) or as a button in the honesty strip. When on, a compact, dismissible stepper bar (sticky under the header on desktop; bottom sheet-like card above the chat launcher on phones, never covering the launcher) walks through:
 1. Problem (one sentence about the Dhaka site; points at the honesty strip),
-2. Side by side (scrolls to the baseline vs Energy Brain comparison table),
+2. Side by side (scrolls to the baseline vs Gridpilot AI comparison table),
 3. Slider (focuses the weight slider; suggest moving it),
 4. Cloud event (opens the Cloud event panel with the demo values 13:00 / 60 % / 2 h and a "Trigger" hint),
 5. Ask why (opens the chat widget with the first suggested question pre-filled but NOT auto-sent),

@@ -9,7 +9,7 @@ The prompt exactly as given to the coding agent:
 
 ---
 
-Task: remove ALL Bangla (Bengali-language) functionality from the Energy Brain Explainer/chat/voice feature. The product decision: the Explainer is English only (Bangla speech recognition was wrong and Bangla is not needed for the business model). Do NOT run `git commit`, `git add`, `git push`, `git stash`, `git reset` or change branches. Work only inside this repo folder (and /tmp for scratch files). Python venv: `.venv-linux/bin/python`.
+Task: remove ALL Bangla (Bengali-language) functionality from the Gridpilot AI Explainer/chat/voice feature. The product decision: the Explainer is English only (Bangla speech recognition was wrong and Bangla is not needed for the business model). Do NOT run `git commit`, `git add`, `git push`, `git stash`, `git reset` or change branches. Work only inside this repo folder (and /tmp for scratch files). Python venv: `.venv-linux/bin/python`.
 
 IMPORTANT scope rules
 - Remove only the Bangla language feature (issue #24). KEEP everything else that is uncommitted in the working tree: operator overrides and cloud event (#22/#25 are already committed), the cloud-event/override/demo-mode screens, PDF report (#26), dark theme, splash/skeleton, chat widget, English voice input (mic icon + Tweenly recorder + POST /transcribe + Groq Whisper), Tailwind setup under web/src/components/ui. Voice stays, but in English only.
