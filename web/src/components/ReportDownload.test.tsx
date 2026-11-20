@@ -35,7 +35,9 @@ it('downloads the selected month and weight through the API and releases the blo
   await waitFor(() => expect(click).toHaveBeenCalledOnce())
   expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/report?month=2024-07&weight=0'),
     expect.objectContaining({ method: 'GET' }))
-  expect(create).toHaveBeenCalledWith(expect.any(Blob))
+  // Node's and jsdom's Blob are different classes on some setups (CI), so check the shape, not the class.
+  expect(create).toHaveBeenCalledOnce()
+  expect(create.mock.calls[0][0]).toMatchObject({ type: 'application/pdf', size: expect.any(Number) })
   expect(revoke).toHaveBeenCalledWith('blob:report')
 })
 
