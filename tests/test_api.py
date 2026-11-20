@@ -1104,3 +1104,4 @@ def test_risk_failing_whatifs_are_not_labelled_safe(dirs):
         assert not cloud["safe"] and not cloud["risk_ok"]
         assert not cloud["after"]["safe"] and not cloud["before"]["safe"]
         assert any("Risk check failed" in b for b in cloud["banners"])
+

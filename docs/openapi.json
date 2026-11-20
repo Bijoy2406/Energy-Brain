@@ -356,6 +356,247 @@
         }
       }
     },
+    "/report": {
+      "get": {
+        "tags": [
+          "report"
+        ],
+        "summary": "Download savings and CO2 report",
+        "description": "Three A4 pages, adjusted totals, both baselines, all caveats and provenance.\n\nHistorical synthetic replay, not a live deployment or a guarantee. Deterministic bytes\ncached in a 32-entry LRU; every download counts toward the sliding one-minute limit.",
+        "operationId": "report_report_get",
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[0-9]{4}-[0-9]{2}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "YYYY-MM inside the backtest; omit for full period",
+              "title": "Month"
+            },
+            "description": "YYYY-MM inside the backtest; omit for full period"
+          },
+          {
+            "name": "weight",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A backtested weight; default: headline weight",
+              "title": "Weight"
+            },
+            "description": "A backtested weight; default: headline weight"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "reports/backtest.json does not exist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Malformed query, month_not_in_backtest or weight_not_in_backtest",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorBody"
+                    },
+                    {
+                      "$ref": "#/components/schemas/HTTPValidationError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "12 downloads per client/minute; 60 overall",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/transcribe": {
+      "post": {
+        "tags": [
+          "transcribe"
+        ],
+        "summary": "Turn a short voice recording into text for the chat box",
+        "description": "The page records a few seconds of audio and posts the raw bytes. The text is only put into the chat\ninput box by the page; it is never sent to the planner or stored. Silence and noise give `no_speech: true`\nand an empty `text`, not an error. Audio is sent to Groq for transcription and is not stored or logged.",
+        "operationId": "transcribe_transcribe_post",
+        "parameters": [
+          {
+            "name": "language",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "auto",
+                "en"
+              ],
+              "type": "string",
+              "description": "spoken language; auto lets the speech model detect it",
+              "default": "auto",
+              "title": "Language"
+            },
+            "description": "spoken language; auto lets the speech model detect it"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscribeResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "audio larger than the limit (audio_too_large)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "not a supported audio type (unsupported_audio)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "empty body (empty_audio)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "too many requests (rate_limited)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "the speech service failed (transcription_failed)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "no key on the server, or all slots busy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "description": "The raw audio bytes (no multipart): up to 2 MB, content type audio/webm, audio/ogg, audio/mp4, audio/mpeg or audio/wav (codec parameters such as `;codecs=opus` are accepted).",
+          "content": {
+            "audio/webm": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            },
+            "audio/ogg": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            },
+            "audio/mp4": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            },
+            "audio/mpeg": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            },
+            "audio/wav": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            },
+            "audio/x-wav": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        }
+      }
+    },
     "/pareto": {
       "get": {
         "tags": [
@@ -1601,6 +1842,11 @@
             "title": "Llm Key Configured",
             "description": "an LLM key is set (the key itself is never returned)"
           },
+          "transcription_available": {
+            "type": "boolean",
+            "title": "Transcription Available",
+            "description": "POST /transcribe can work (the same key is set)"
+          },
           "llm_model": {
             "type": "string",
             "title": "Llm Model"
@@ -1628,6 +1874,7 @@
           "backtest",
           "demo_answers",
           "llm_key_configured",
+          "transcription_available",
           "llm_model",
           "explain_cache",
           "cache",
@@ -2563,6 +2810,46 @@
         ],
         "title": "TotalsDelta",
         "description": "Signed planned totals, after minus before; no settlement against actuals."
+      },
+      "TranscribeResponse": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "what was said (at most 500 characters); empty when no speech was found"
+          },
+          "language": {
+            "type": "string",
+            "title": "Language",
+            "description": "en (the requested language, else what Whisper detected)"
+          },
+          "duration_s": {
+            "type": "number",
+            "title": "Duration S",
+            "description": "length of the audio in seconds, as reported by the speech service"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "description": "speech model used"
+          },
+          "no_speech": {
+            "type": "boolean",
+            "title": "No Speech",
+            "description": "true when nothing but silence or noise was found (text is empty)"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "text",
+          "language",
+          "duration_s",
+          "model",
+          "no_speech"
+        ],
+        "title": "TranscribeResponse",
+        "description": "Speech turned into text for the chat input box. Audio and text are not stored."
       },
       "ValidationError": {
         "properties": {

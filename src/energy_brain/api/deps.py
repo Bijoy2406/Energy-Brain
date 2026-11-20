@@ -10,6 +10,7 @@ from typing import Annotated
 from fastapi import Depends, HTTPException, Request
 
 from energy_brain.api.service import PlanService
+from energy_brain.api.transcribe import GroqTranscriber
 from energy_brain.explainer import ExplainerAgent
 
 
@@ -22,7 +23,13 @@ def get_explainer() -> ExplainerAgent:
     return ExplainerAgent()
 
 
+def get_transcriber() -> GroqTranscriber:
+    """The live speech-to-text client (Groq Whisper; the key is read at call time)."""
+    return GroqTranscriber()
+
+
 ServiceDep = Annotated[PlanService, Depends(get_service)]
+TranscriberDep = Annotated[GroqTranscriber, Depends(get_transcriber)]
 ExplainerDep = Annotated[ExplainerAgent, Depends(get_explainer)]
 
 

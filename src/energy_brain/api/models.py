@@ -438,6 +438,16 @@ class WarmupStatus(_Model):
     errors: int
 
 
+class TranscribeResponse(_Model):
+    """Speech turned into text for the chat input box. Audio and text are not stored."""
+
+    text: str = Field(description="what was said (at most 500 characters); empty when no speech was found")
+    language: str = Field(description="en (the requested language, else what Whisper detected)")
+    duration_s: float = Field(description="length of the audio in seconds, as reported by the speech service")
+    model: str = Field(description="speech model used")
+    no_speech: bool = Field(description="true when nothing but silence or noise was found (text is empty)")
+
+
 class HealthResponse(_Model):
     status: Literal["ok"]
     version: str
@@ -447,6 +457,7 @@ class HealthResponse(_Model):
     backtest: bool = Field(description="reports/backtest.json exists")
     demo_answers: int = Field(description="stored verified demo answers loaded")
     llm_key_configured: bool = Field(description="an LLM key is set (the key itself is never returned)")
+    transcription_available: bool = Field(description="POST /transcribe can work (the same key is set)")
     llm_model: str
     explain_cache: str = Field(description="fallback / prefer / off (EB_EXPLAIN_CACHE)")
     cache: CacheStats

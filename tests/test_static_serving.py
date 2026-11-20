@@ -47,6 +47,7 @@ def test_api_and_docs_unchanged(website):
 @pytest.mark.parametrize("path", [
     "/plan/missing", "/days/missing", "/backtest/missing", "/backtest/days/missing",
     "/explain/missing", "/health/fake.json", "/docs/missing", "/openapi.json/missing", "/api/missing",
+    "/report/missing", "/simulate/missing", "/pareto/missing",
 ])
 def test_api_namespaces_never_fall_back_to_html(website, path):
     response = website.get(path, headers={"Accept": "text/html"})
