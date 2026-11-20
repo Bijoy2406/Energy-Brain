@@ -82,7 +82,7 @@ How the Explainer is kept honest (this is the core of our responsible-AI design)
    calculates.
 3. **Traceability check.** Every number, time and date in an answer must appear in a tool output of the same
    conversation (rounding allowed). If not, the answer is sent back once, then refused as "unverified". Answers show
-   a "Verified" badge and a "Sources" list with the tool and field behind each number.
+   a "Verified" badge, and every number in the answer is highlighted and shows, on hover or focus, the tool and field it came from.
 4. **Refusals.** It refuses questions about missing data, off-topic questions and any request to change or control
    the plan.
 5. **Stored answers.** Five demo questions have recorded, verified answers that are re-checked against fresh tool

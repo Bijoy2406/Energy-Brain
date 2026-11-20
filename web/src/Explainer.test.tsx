@@ -75,11 +75,8 @@ it('sends exact suggestions with selected date and solved weight; shows verified
   expect(screen.getByRole('tooltip')).toHaveTextContent('get_slot -> generator_kw (number)')
   fireEvent.keyDown(mark, { key: 'Escape' })
   expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
-  const sources = screen.getByText('Sources').closest('details')!
-  expect(sources).not.toHaveAttribute('open')
-  fireEvent.click(screen.getByText('Sources'))
-  expect(within(sources).getByRole('table')).toHaveTextContent('generator_kw')
-  expect(sources).toHaveTextContent('19:00')
+  // The bulky "Sources" dropdown was removed; each number's source stays available in its tooltip.
+  expect(screen.queryByText('Sources')).not.toBeInTheDocument()
 })
 
 it('uses requested weight before a plan is available and the current selected date', async () => {
