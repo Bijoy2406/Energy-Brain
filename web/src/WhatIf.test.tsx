@@ -54,7 +54,8 @@ describe('cloud event', () => {
     expect(within(result).getByText('+1,200')).toBeInTheDocument()
     expect(within(result).getByText('Re-planned in 1.2 s')).toBeInTheDocument()
     expect(within(result).getByRole('region', { name: 'Before and after cloud event chart' })).toBeInTheDocument()
-    expect(result.querySelectorAll('.recharts-reference-area')).toHaveLength(2)
+    // Recharts draws the shaded areas a moment after the chart mounts (later under load), so wait for them.
+    await waitFor(() => expect(result.querySelectorAll('.recharts-reference-area')).toHaveLength(2))
     expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/simulate/cloud'), expect.objectContaining({ body: JSON.stringify({ date: '2024-07-02', w: 0.5, time: '13:00', drop_pct: 60, duration_minutes: 120 }) }))
     expect(screen.getByText(/simulated what-if on a historical replay day/i)).toBeVisible()
   })
