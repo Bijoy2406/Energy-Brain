@@ -1,4 +1,4 @@
-# Energy Brain frontend
+# Gridpilot AI frontend
 
 Vite + React + TypeScript dashboard for the FastAPI backend. The scaffold loads labelled planning days and
 requests a plan at `w=0.5`, selecting `2024-07-02` when available. It shows the API's status, safe flag, warnings

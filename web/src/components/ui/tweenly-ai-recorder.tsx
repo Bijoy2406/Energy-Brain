@@ -21,7 +21,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-Energy Brain changes to the original component (everything else is unchanged):
+Gridpilot AI changes to the original component (everything else is unchanged):
  - the root element also carries the class "tweenly-recorder" (used by review-theme.css);
  - new optional prop onPhaseChange, called when the phase changes;
  - onRecordingComplete gets a third argument, the loudest sample level of the recording (0..1), so the caller

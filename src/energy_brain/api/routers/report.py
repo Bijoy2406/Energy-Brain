@@ -74,6 +74,6 @@ def report(
         content,
         media_type="application/pdf",
         headers={
-            "Content-Disposition": f'attachment; filename="energy-brain-report-{period}.pdf"',
+            "Content-Disposition": f'attachment; filename="gridpilot-report-{period}.pdf"',
         },
     )

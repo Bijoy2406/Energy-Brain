@@ -1,4 +1,4 @@
-# Deploy Energy Brain on a VPS (Docker + nginx)
+# Deploy Gridpilot AI on a VPS (Docker + nginx)
 
 The app runs in Docker on `127.0.0.1:7860`; the server's existing nginx forwards your hostname to it and
 certbot adds free HTTPS. (If the server has nothing on ports 80/443 you can use Caddy in front instead.) The app must run as a **single process** (the solver lock

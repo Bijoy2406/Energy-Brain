@@ -5,7 +5,7 @@ diesel generator for the next 24 hours, to cut electricity cost and CO2. A deter
 decision; an LLM only explains them, using numbers from the other agents.
 
 Entry for **ClimateSphere AI → Energy Brain** ("Smart energy optimization and demand response") at the
-International AI Builders Congress 2026. Full product spec: [Energy Brain — PRD](Energy%20Brain%20%E2%80%94%20PRD.md).
+International AI Builders Congress 2026. Full product spec: [Gridpilot AI — PRD](Gridpilot%20AI%20%E2%80%94%20PRD.md).
 Work is tracked in [GitHub Issues](https://github.com/Bijoy2406/Energy-Brain/issues) by phase label and milestone.
 
 ## Status

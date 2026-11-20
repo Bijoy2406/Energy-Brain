@@ -6,7 +6,7 @@ what they really used (a missing or wrong disclosure can block Submit). Dates ar
 
 ## 1. Text to paste into the portal
 
-> **How we built it.** A three-person team built Energy Brain with AI coding assistants under human control. The
+> **How we built it.** A three-person team built Gridpilot AI with AI coding assistants under human control. The
 > backend/agents lead (Bijoy) worked as an orchestrator: he wrote each prompt, ran the coding agent, reviewed and
 > tested the result himself, and approved every commit, pull request and merge. No change reached `main` without a
 > passing CI run (backend and web test suites, lint, type check). The shipped product itself does **not** act as an
@@ -56,12 +56,12 @@ None used by Bijoy. `[Asif / ovishkh: list any, or write "none"]`
 
 | File | Where | What it contained | Affects this project? |
 | --- | --- | --- | --- |
-| `Energy Brain — PRD.md` | repository root | Product requirements, demo script, judging alignment. Given to agents as the specification | Yes |
+| `Gridpilot AI — PRD.md` | repository root | Product requirements, demo script, judging alignment. Given to agents as the specification | Yes |
 | `docs/interfaces.md`, `docs/data-sources.md`, `docs/site-spec.md`, `docs/api.md` | repository | Agent contracts, data provenance, site assumptions, API contract. The agents were told to read the relevant ones first | Yes |
 | `prompts/*.md`, `prompts/explainer_demo_questions.yaml` | repository | The Explainer's prompts and the question set used to check it | Yes (it is part of the product) |
 | Claude Code **project memory** (`MEMORY.md` and two project notes: `orchestrator-approval-workflow.md`, `agy-cli-usage.md`) | Bijoy's machine, outside the repository | Working rules: ask when unclear; never commit, push or merge without approval; how to run the `agy` CLI safely (sandbox, allowed commands) | Yes (process rules) |
 | Claude Code **global instructions** (`~/.claude/CLAUDE.md`) and `~/AGENTS.md` | Bijoy's machine, outside the repository | One line each, about a separate knowledge-graph tool; no project content | No |
-| Two other memory notes (a statistics-course note and a Stata bridge note) | Bijoy's machine | Unrelated to Energy Brain | No |
+| Two other memory notes (a statistics-course note and a Stata bridge note) | Bijoy's machine | Unrelated to Gridpilot AI | No |
 
 There is **no** `CLAUDE.md`, `AGENTS.md`, `.cursorrules` or similar rules file inside the repository. `[Asif / ovishkh:
 add any rules or context files you used]`

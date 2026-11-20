@@ -9,7 +9,7 @@ The prompt exactly as given to the coding agent:
 
 ---
 
-Add a dark mode with a theme toggle to the Energy Brain web UI (web/ only). Do NOT commit, push or touch git. There are uncommitted splash changes in web/index.html and web/src/splash.ts: keep them working.
+Add a dark mode with a theme toggle to the Gridpilot AI web UI (web/ only). Do NOT commit, push or touch git. There are uncommitted splash changes in web/index.html and web/src/splash.ts: keep them working.
 
 Theme behaviour:
 - Two themes: light (current) and dark. Default = the OS setting (prefers-color-scheme). Once the user picks one with the toggle, remember it in localStorage key 'eb-theme' ('light' | 'dark') and follow the OS again only if nothing is stored. Wrap all storage access in try/catch.

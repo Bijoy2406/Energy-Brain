@@ -1,5 +1,5 @@
 ---
-title: Energy Brain
+title: Gridpilot AI
 emoji: ⚡
 colorFrom: green
 colorTo: blue
@@ -9,7 +9,7 @@ pinned: false
 short_description: Solar, battery and load scheduling with traceable explanations
 ---
 
-# Energy Brain
+# Gridpilot AI
 
 Plan a commercial site's solar, battery, flexible loads and backup generator.
 Compare electricity cost and CO2, inspect the schedule, and ask why the optimiser made a decision.

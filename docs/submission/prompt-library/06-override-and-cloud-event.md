@@ -9,7 +9,7 @@ The prompt exactly as given to the coding agent:
 
 ---
 
-Implement GitHub issues #22 (simulated cloud event, live re-plan) and #25 (operator override of a slot with re-solve) in the Energy Brain backend. Python only (src/energy_brain, tests, docs/openapi.json, web/src/api/generated.ts). Do NOT commit, push or touch git. No frontend UI work (that is #33, later).
+Implement GitHub issues #22 (simulated cloud event, live re-plan) and #25 (operator override of a slot with re-solve) in the Gridpilot AI backend. Python only (src/energy_brain, tests, docs/openapi.json, web/src/api/generated.ts). Do NOT commit, push or touch git. No frontend UI work (that is #33, later).
 
 Read first: src/energy_brain/planner/model.py (formulation docstring), planner/agent.py (MilpPlanner.plan, _infeasible elastic path), planner/checks.py (find_violations), orchestrator.py (run_plan + Risk re-plan loop), api/service.py (PlanService: plan cache, single-flight, HiGHS lock, RateLimiter), api/models.py, api/routers/plan.py, tests/test_planner.py, tests/test_orchestrator.py, tests/test_api.py. Follow the existing style: docstrings that state limits honestly, pydantic v2 models with Field descriptions, ruff clean.
 
