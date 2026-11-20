@@ -1,0 +1,20 @@
+# Energy Brain on a VPS that already runs nginx. The app listens only on the server's loopback address;
+# nginx (see nginx-energybrain.conf) terminates HTTPS and forwards to it.
+# Run from this folder on the server:  docker compose up -d --build
+services:
+  app:
+    # Build context = the exported build folder (see README.md), which contains the Dockerfile and
+    # deploy/artifacts with the trained data and models.
+    build: ./app
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: "7860"
+    ports:
+      - "127.0.0.1:7860:7860"   # loopback only: not reachable from the internet except through nginx
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
