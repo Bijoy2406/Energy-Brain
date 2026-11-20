@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from './api/client'
 import type { ApiResult, DayInfo, PlanResponse } from './api/client'
-import ScheduleCharts from './chart/ScheduleCharts'
-import { formatBdt, formatKg, formatHours } from './chart/scheduleData'
+import PlanSummary from './components/PlanSummary'
+import CloudEventPanel from './components/CloudEventPanel'
+import OverridePanel from './components/OverridePanel'
+import DemoGuide from './components/DemoGuide'
 import WeightSlider from './components/WeightSlider'
-import AnimatedValue from './components/AnimatedValue'
 import ExplainerPanel from './components/ExplainerPanel'
 import BacktestView from './components/BacktestView'
 import TradeoffView from './components/TradeoffView'
-import SameDayComparison from './components/SameDayComparison'
 import { PlanSkeleton, SelectSkeleton } from './components/Skeleton'
 import { createBacktestData } from './backtest/data'
 import type { BacktestData } from './backtest/data'
@@ -19,37 +19,6 @@ import { useDashboardMotion } from './hooks/useDashboardMotion'
 import ThemeToggle from './components/ThemeToggle'
 import './App.css'
 
-function PlanSummary({ plan, source, selectedDate, onSeeLimits }: { plan: PlanResponse; source: BacktestData; selectedDate: string; onSeeLimits: () => void }) {
-  const warnings = [...new Set([
-    ...plan.banners,
-    ...(plan.forecast_fallback.used ? [plan.forecast_fallback.note ?? 'Forecast fallback used.'] : []),
-    ...(plan.signal_fallback.used ? [plan.signal_fallback.note ?? 'Signal fallback used.'] : []),
-  ])]
-
-  return <>
-    {(!plan.safe || warnings.length > 0) && (
-      <section className={`warning ${!plan.safe ? 'unsafe' : ''}`} role="alert" aria-label="Plan warnings">
-        <h3>{!plan.safe ? 'NOT SAFE TO EXECUTE' : 'Plan warnings'}</h3>
-        {!plan.safe && <p>Diagnostic only. This plan does not meet every hard constraint and must not be executed.</p>}
-        {warnings.length > 0 && <ul>{warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>}
-      </section>
-    )}
-    <div className="plan-status">
-      <span className="status-badge">{plan.plan.status}</span>
-      <span className={`status-badge ${plan.safe ? 'safe-badge' : 'unsafe-badge'}`}>{plan.safe ? 'Safe' : 'NOT safe'}</span>
-      {plan.cached && <span className="status-badge">cached</span>}
-      {plan.weight !== plan.weight_requested && <span className="status-badge">Solved at w = {plan.weight.toFixed(2)}</span>}
-    </div>
-    <dl className="summary-cards">
-      <div tabIndex={0}><dt>Cost · BDT</dt><dd><AnimatedValue value={plan.plan.totals.cost_bdt} format={formatBdt} /></dd></div>
-      <div tabIndex={0}><dt>CO2 · kg</dt><dd><AnimatedValue value={plan.plan.totals.co2_kg} format={formatKg} /></dd></div>
-      <div tabIndex={0}><dt>Generator hours · h</dt><dd><AnimatedValue value={plan.plan.totals.generator_hours} format={formatHours} /></dd></div>
-    </dl>
-    <p className="muted">Totals are reported directly by the planner.</p>
-    <SameDayComparison plan={plan} source={source} selectedDate={selectedDate} onSeeLimits={onSeeLimits} />
-    <ScheduleCharts response={plan} />
-  </>
-}
 
 type SolvedPlan = { response: PlanResponse; requestedWeight: number }
 
@@ -112,6 +81,13 @@ export default function App() {
   const [selectedDate, setSelectedDate] = useState('')
   const [weight, setWeight] = useState(0.5)
   const [shownPlan, setShownPlan] = useState<SolvedPlan | null>(null)
+  const [demoStep, setDemoStep] = useState<number | null>(null)
+  const [cloudOpen, setCloudOpen] = useState(false)
+  const [cloudDemo, setCloudDemo] = useState(0)
+  const cloudCooldown = useRef(0)
+  const overrideCooldown = useRef(0)
+  const demoToggle = useRef<HTMLButtonElement>(null)
+  const currentPlan = shownPlan?.response.date === selectedDate && shownPlan.requestedWeight === weight ? shownPlan.response : null
   const selectedDay = days?.ok ? days.data.find((day) => day.date === selectedDate) : undefined
 
   useEffect(() => {
@@ -131,6 +107,25 @@ export default function App() {
   function seeLimits() {
     setTabs((previous) => ({ tab: 'backtest', visited: new Set([...previous.visited, 'backtest' as const]), limitsRequest: previous.limitsRequest + 1 }))
     window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#limits`)
+  }
+
+  function goDemoStep(step: number) {
+    setDemoStep(step)
+    if (step === 0) {
+      if (days?.ok && days.data.some(day => day.date === '2024-07-02')) setSelectedDate('2024-07-02')
+      setWeight(0.5)
+    }
+    if (step === 5) seeLimits()
+    else selectTab('plan')
+    if (step === 3) {
+      setCloudDemo(value => value + 1)
+      setCloudOpen(true)
+    }
+  }
+
+  function closeDemo() {
+    setDemoStep(null)
+    demoToggle.current?.focus()
   }
 
   useEffect(() => {
@@ -164,11 +159,14 @@ export default function App() {
           </div>
           <div className="header-meta">
             <ThemeToggle />
+            <button type="button" ref={demoToggle} className="meta-pill demo-toggle" aria-pressed={demoStep !== null}
+              onClick={() => { if (demoStep === null) goDemoStep(0); else closeDemo() }}>Demo mode</button>
             <span className="meta-pill">1,000 kWh BESS</span>
             <span className="meta-pill">96 Slots · 15m</span>
             <span className="replay-label"><span className="replay-dot" aria-hidden="true" />Historical replay</span>
           </div>
         </div>
+        {demoStep !== null && <DemoGuide step={demoStep} onStep={goDemoStep} onClose={closeDemo} onPareto={() => selectTab('tradeoff')} />}
       </header>
       <div className="page-body container-wrap">
         <p className="honesty-strip">
@@ -215,6 +213,8 @@ export default function App() {
               {selectedDate && <PlanPanel date={selectedDate} weight={weight} onPlan={setShownPlan} source={backtestData} onSeeLimits={seeLimits} />}
             </section>
           </div>
+          <CloudEventPanel key={`cloud-${selectedDate}-${weight}-${cloudDemo}`} date={selectedDate} weight={weight} cooldown={cloudCooldown} open={cloudOpen} onOpenChange={setCloudOpen} />
+          <OverridePanel key={`overrides-${selectedDate}-${weight}`} date={selectedDate} weight={weight} cooldown={overrideCooldown} baseline={currentPlan} source={backtestData} onSeeLimits={seeLimits} />
           </div>
           <div role="tabpanel" id="tradeoff-panel" aria-labelledby="tradeoff-tab" hidden={tabs.tab !== 'tradeoff'} tabIndex={0}>
             {tabs.visited.has('tradeoff') && <TradeoffView date={selectedDate} days={days?.ok ? days.data : []} weight={weight}
@@ -225,7 +225,7 @@ export default function App() {
           </div>
         </main>
       </div>
-      <ExplainerPanel date={selectedDate} weight={shownPlan?.response.date === selectedDate && shownPlan.requestedWeight === weight ? shownPlan.response.weight : weight} />
+      <ExplainerPanel demoAsk={demoStep === 4} date={selectedDate} weight={shownPlan?.response.date === selectedDate && shownPlan.requestedWeight === weight ? shownPlan.response.weight : weight} />
       <footer className="site-footer">
         <div className="footer-inner container-wrap">
           <div className="footer-grid">

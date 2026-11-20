@@ -1,0 +1,286 @@
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import App from './App'
+import { days, planFixture } from './test/fixtures'
+import { backtestDaysFixture, backtestFixture } from './test/backtestFixture'
+import { paretoFixture } from './test/paretoFixture'
+import { findStable } from './test/stable'
+import type { components } from './api/generated'
+
+beforeEach(() => { Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, writable: true, value: vi.fn() }) })
+
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
+function cloudFixture(): components['schemas']['CloudResponse'] {
+  const before = planFixture()
+  const after = planFixture()
+  after.plan.totals = { ...after.plan.totals, cost_bdt: before.plan.totals.cost_bdt + 1200, co2_kg: before.plan.totals.co2_kg + 100, generator_hours: 2, diesel_litres: 60 }
+  return { before, after, event: { date: before.date, w: 0.5, time: '13:00', drop_pct: 60, duration_minutes: 120, kind: 'simulated cloud event' }, affected_slots: { start: 52, end: 60 }, delta: { cost_bdt: 1200, co2_kg: 100, generator_hours: 2, diesel_litres: 60 }, replan_seconds: 1.24, safe: true, risk_ok: true, banners: [] }
+}
+function mockApi(options: { cloud?: (init: RequestInit) => Promise<Response>; override?: (init: RequestInit) => Promise<Response> } = {}) {
+  const fetchMock = vi.fn(async (url: string, init: RequestInit = {}) => {
+    if (url.includes('/pareto')) return json(paretoFixture())
+    if (url.endsWith('/backtest')) return json(backtestFixture())
+    if (url.includes('/backtest/days')) return json(backtestDaysFixture())
+    if (url.endsWith('/days')) return json(days)
+    if (url.endsWith('/simulate/cloud')) return options.cloud?.(init) ?? json(cloudFixture())
+    if (url.endsWith('/plan')) {
+      const body = JSON.parse(String(init.body))
+      if (body.overrides) return options.override?.(init) ?? json(planFixture({ override: { applied: body.overrides, baseline: planFixture().plan.totals, delta: { cost_bdt: 0, co2_kg: 0, generator_hours: 0, diesel_litres: 0 }, feasible: true } }))
+      return json(planFixture({ date: body.date, weight: body.w, weight_requested: body.w }))
+    }
+    throw new Error(`Unexpected URL: ${url}`)
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  return fetchMock
+}
+async function openCloud() {
+  await screen.findByText('152,703')
+  fireEvent.click(screen.getByText('Cloud event', { selector: 'summary' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Trigger cloud event' }))
+}
+async function addOverride() {
+  await screen.findByText('152,703')
+  fireEvent.click(screen.getByText('Operator overrides', { selector: 'summary' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Add override' }))
+}
+
+describe('cloud event', () => {
+  it('sends the selected settings and displays API comparison, shaded chart and timing', async () => {
+    const fetchMock = mockApi()
+    render(<App />)
+    await openCloud()
+    const result = await screen.findByRole('region', { name: 'Simulated cloud event result' })
+    expect(within(result).getByText('+1,200')).toBeInTheDocument()
+    expect(within(result).getByText('Re-planned in 1.2 s')).toBeInTheDocument()
+    expect(within(result).getByRole('region', { name: 'Before and after cloud event chart' })).toBeInTheDocument()
+    expect(result.querySelectorAll('.recharts-reference-area')).toHaveLength(2)
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/simulate/cloud'), expect.objectContaining({ body: JSON.stringify({ date: '2024-07-02', w: 0.5, time: '13:00', drop_pct: 60, duration_minutes: 120 }) }))
+    expect(screen.getByText(/simulated what-if on a historical replay day/i)).toBeVisible()
+  })
+  it('shows NOT SAFE even when only the cloud Risk verdict fails', async () => {
+    mockApi({ cloud: async () => json({ ...cloudFixture(), risk_ok: false, banners: ['Risk rejected the re-plan'] }) })
+    render(<App />)
+    await openCloud()
+    expect(await screen.findByRole('heading', { name: 'NOT SAFE TO EXECUTE' })).toBeVisible()
+    expect(screen.getByText('Risk rejected the re-plan')).toBeVisible()
+    expect(screen.getByText(/Cost changes are diagnostic only/)).toBeVisible()
+  })
+  it('honors retry_after_s before retrying an error', async () => {
+    let calls = 0
+    mockApi({ cloud: async () => ++calls === 1 ? json({ detail: { code: 'rate_limited', message: 'Slow down', retry_after_s: 1 } }, 429) : json(cloudFixture()) })
+    render(<App />)
+    await openCloud()
+    expect(await screen.findByRole('alert')).toHaveTextContent('Slow down')
+    expect(screen.getByRole('button', { name: 'Retry cloud event' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Trigger cloud event' })).toBeDisabled()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Retry cloud event' })).toBeEnabled(), { timeout: 3000 })
+    fireEvent.click(screen.getByRole('button', { name: 'Retry cloud event' }))
+    expect(await screen.findByText('Re-planned in 1.2 s')).toBeVisible()
+  })
+  it('preserves the server cooldown when the planning day changes', async () => {
+    mockApi({ cloud: async () => json({ detail: { code: 'rate_limited', message: 'Slow down', retry_after_s: 30 } }, 429) })
+    render(<App />)
+    await openCloud()
+    await screen.findByText('Slow down')
+    fireEvent.change(screen.getByRole('combobox', { name: 'Planning day' }), { target: { value: '2024-07-01' } })
+    expect(screen.getByRole('button', { name: 'Trigger cloud event' })).toBeDisabled()
+  })
+  it('clears a completed result when weight changes and aborts on unmount', async () => {
+    let signal: AbortSignal | null | undefined
+    mockApi({ cloud: async init => { signal = init.signal; return json(cloudFixture()) } })
+    const view = render(<App />)
+    await openCloud()
+    await screen.findByText('Re-planned in 1.2 s')
+    fireEvent.change(screen.getByRole('slider', { name: 'Cost vs carbon' }), { target: { value: '0.3' } })
+    expect(signal?.aborted).toBe(true)
+    expect(screen.queryByRole('region', { name: 'Simulated cloud event result' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Trigger cloud event' }))
+    await screen.findByText('Re-planned in 1.2 s')
+    view.unmount()
+    expect(signal?.aborted).toBe(true)
+  })
+  it('aborts and discards pending results when the day changes', async () => {
+    let signal: AbortSignal | undefined | null
+    let resolve: (value: Response) => void = () => {}
+    mockApi({ cloud: init => { signal = init.signal; return new Promise(done => { resolve = done }) } })
+    render(<App />)
+    await openCloud()
+    expect(screen.getByText('Re-planning simulated cloud event…')).toBeVisible()
+    fireEvent.change(screen.getByRole('combobox', { name: 'Planning day' }), { target: { value: '2024-07-01' } })
+    expect(signal?.aborted).toBe(true)
+    await act(async () => resolve(json(cloudFixture())))
+    expect(screen.queryByRole('region', { name: 'Simulated cloud event result' })).not.toBeInTheDocument()
+  })
+})
+
+describe('operator overrides', () => {
+  it('validates empty rows, battery bounds, generator bounds and duplicate slots before sending', async () => {
+    const fetchMock = mockApi()
+    render(<App />)
+    await addOverride()
+    const submit = screen.getByRole('button', { name: 'Re-solve with overrides' })
+    fireEvent.click(submit)
+    expect(screen.getByRole('alert')).toHaveTextContent('at least one')
+    fireEvent.change(screen.getByLabelText('Battery kW, row 1 (+ charge / - discharge)'), { target: { value: '2' } })
+    fireEvent.click(submit)
+    expect(screen.getByRole('alert')).toHaveTextContent('Battery must be between -1 and 1')
+    fireEvent.change(screen.getByLabelText('Battery kW, row 1 (+ charge / - discharge)'), { target: { value: '0' } })
+    fireEvent.change(screen.getByLabelText('Generator kW, row 1'), { target: { value: '2' } })
+    fireEvent.click(submit)
+    expect(screen.getByRole('alert')).toHaveTextContent('Generator must be 0 or between')
+    fireEvent.click(screen.getByRole('button', { name: 'Add override' }))
+    fireEvent.change(screen.getByLabelText('Override time, row 2'), { target: { value: '00:00' } })
+    fireEvent.click(submit)
+    expect(screen.getByRole('alert')).toHaveTextContent('unique')
+    expect(fetchMock.mock.calls.filter(([url, init]) => url.endsWith('/plan') && JSON.parse(String(init?.body)).overrides)).toHaveLength(0)
+  })
+  it('shows the overridden plan and signed impact, then clears back to the optimiser', async () => {
+    const fetchMock = mockApi({ override: async init => {
+      const plan = planFixture()
+      plan.plan.totals = { ...plan.plan.totals, cost_bdt: plan.plan.totals.cost_bdt + 1200, co2_kg: plan.plan.totals.co2_kg - 100 }
+      return json({ ...plan, override: { applied: JSON.parse(String(init.body)).overrides, baseline: planFixture().plan.totals, delta: { cost_bdt: 1200, co2_kg: -100, generator_hours: 0, diesel_litres: 0 }, feasible: true } })
+    } })
+    render(<App />)
+    await addOverride()
+    fireEvent.change(screen.getByLabelText('Battery kW, row 1 (+ charge / - discharge)'), { target: { value: '-1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Re-solve with overrides' }))
+    const result = await screen.findByRole('region', { name: 'Plan with your overrides' })
+    expect(within(result).getByText('Feasible: Yes')).toBeVisible()
+    expect(within(result).getByText('+1,200')).toBeVisible()
+    expect(within(result).getByText('-100')).toBeVisible()
+    expect(within(result).getByRole('region', { name: 'Energy supply and demand chart' })).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/plan'), expect.objectContaining({ body: JSON.stringify({ date: '2024-07-02', w: 0.5, overrides: [{ time: '00:00', battery_kw: -1 }] }) }))
+    fireEvent.click(screen.getByRole('button', { name: "Back to the optimiser's plan" }))
+    expect(screen.queryByRole('region', { name: 'Plan with your overrides' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Override time, row 1')).not.toBeInTheDocument()
+  })
+  it('labels infeasible results NOT SAFE and cost differences diagnostic only', async () => {
+    mockApi({ override: async () => json(planFixture({ banners: ['Overrides cannot be satisfied'], override: { applied: [], baseline: planFixture().plan.totals, delta: { cost_bdt: -3000, co2_kg: 0, generator_hours: 0, diesel_litres: 0 }, feasible: false } })) })
+    render(<App />)
+    await addOverride()
+    fireEvent.change(screen.getByLabelText('Generator kW, row 1'), { target: { value: '0' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Re-solve with overrides' }))
+    const result = await screen.findByRole('region', { name: 'Plan with your overrides' })
+    expect(within(result).getByRole('heading', { name: 'NOT SAFE TO EXECUTE' })).toBeVisible()
+    expect(within(result).getByText('Feasible: No')).toBeVisible()
+    expect(within(result).getByText('Overrides cannot be satisfied')).toBeVisible()
+    expect(within(result).getByText(/Cost changes are diagnostic only/)).toBeVisible()
+    expect(result).not.toHaveTextContent(/savings/i)
+  })
+  it('caps rows at eight and allows removing a row', async () => {
+    mockApi()
+    render(<App />)
+    await addOverride()
+    for (let index = 1; index < 8; index++) fireEvent.click(screen.getByRole('button', { name: 'Add override' }))
+    expect(screen.getAllByRole('group', { name: /^Override \d/ })).toHaveLength(8)
+    expect(screen.getByRole('button', { name: 'Add override' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Remove override 3' }))
+    expect(screen.getAllByRole('group', { name: /^Override \d/ })).toHaveLength(7)
+    expect(screen.getByRole('button', { name: 'Add override' })).toBeEnabled()
+  })
+  it('aborts an override on clear and keeps the Explainer on the default plan', async () => {
+    let signal: AbortSignal | null | undefined
+    mockApi({ override: init => { signal = init.signal; return new Promise(() => {}) } })
+    render(<App />)
+    await addOverride()
+    fireEvent.change(screen.getByLabelText('Generator kW, row 1'), { target: { value: '0' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Re-solve with overrides' }))
+    expect(screen.getByText('Re-solving with operator overrides…')).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: "Back to the optimiser's plan" }))
+    expect(signal?.aborted).toBe(true)
+    expect(screen.queryByText('Re-solving with operator overrides…')).not.toBeInTheDocument()
+    expect(screen.getByText(/The Explainer always explains the default/)).toBeVisible()
+  })
+  it('shows server invalid_overrides messages', async () => {
+    mockApi({ override: async () => json({ detail: { code: 'invalid_overrides', message: 'Server rejected slot 0' } }, 422) })
+    render(<App />)
+    await addOverride()
+    fireEvent.change(screen.getByLabelText('Generator kW, row 1'), { target: { value: '0' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Re-solve with overrides' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Server rejected slot 0')
+  })
+})
+
+describe('guided demo', () => {
+  it('walks through steps, opens panels, prefills without sending and opens limits', async () => {
+    const user = userEvent.setup()
+    const fetchMock = mockApi()
+    render(<App />)
+    await screen.findByText('152,703')
+    fireEvent.change(screen.getByRole('combobox', { name: 'Planning day' }), { target: { value: '2024-07-01' } })
+    fireEvent.change(screen.getByRole('slider', { name: 'Cost vs carbon' }), { target: { value: '0.8' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Demo mode' }))
+    const guide = screen.getByRole('region', { name: 'Guided demo' })
+    expect(guide).toHaveTextContent('Problem')
+    expect(screen.getByRole('combobox', { name: 'Planning day' })).toHaveValue('2024-07-02')
+    expect(screen.getByRole('slider', { name: 'Cost vs carbon' })).toHaveValue('0.5')
+    fireEvent.click(within(guide).getByRole('button', { name: 'Next' }))
+    expect(guide).toHaveTextContent('Side by side')
+    fireEvent.click(within(guide).getByRole('button', { name: 'Next' }))
+    const slider = await findStable(() => screen.getByRole('slider', { name: 'Cost vs carbon' }))
+    await waitFor(() => expect(slider).toHaveFocus())
+    expect(within(guide).getByRole('button', { name: 'See Pareto frontier' })).toBeVisible()
+    fireEvent.click(within(guide).getByRole('button', { name: 'Next' }))
+    expect(screen.getByRole('button', { name: 'Trigger cloud event' })).toBeVisible()
+    expect(screen.getByLabelText('Cloud start time')).toHaveValue('13:00')
+    expect(screen.getByLabelText('Solar drop %')).toHaveValue('60')
+    expect(screen.getByLabelText('Cloud duration')).toHaveValue('120')
+    fireEvent.click(within(guide).getByRole('button', { name: 'Next' }))
+    expect(screen.getByRole('dialog')).toBeVisible()
+    expect(screen.getByRole('textbox', { name: 'Ask about the plan' })).toHaveValue('Why did you run the generator at 7 PM?')
+    expect(fetchMock.mock.calls.some(([url]) => url.includes('/explain'))).toBe(false)
+    fireEvent.click(within(guide).getByRole('button', { name: 'Next' }))
+    expect(screen.getByRole('tab', { name: 'Backtest results' })).toHaveAttribute('aria-selected', 'true')
+    expect(await screen.findByRole('heading', { name: 'Limits and methodology' })).toBeVisible()
+    await waitFor(() => expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalled())
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    fireEvent.click(within(guide).getByRole('button', { name: 'Back' }))
+    expect(guide).toHaveTextContent('Ask why')
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('region', { name: 'Guided demo' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Demo mode' })).toHaveFocus()
+  })
+  it('jumps to the existing Pareto view and resumes the cloud step', async () => {
+    mockApi()
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Demo mode' }))
+    const guide = screen.getByRole('region', { name: 'Guided demo' })
+    fireEvent.click(within(guide).getByRole('button', { name: 'Next' }))
+    fireEvent.click(within(guide).getByRole('button', { name: 'Next' }))
+    fireEvent.click(within(guide).getByRole('button', { name: 'See Pareto frontier' }))
+    expect(screen.getByRole('tab', { name: 'Trade-off' })).toHaveAttribute('aria-selected', 'true')
+    expect(await screen.findByText(/From the cheapest to the cleanest/)).toBeVisible()
+    fireEvent.click(within(guide).getByRole('button', { name: 'Next' }))
+    expect(screen.getByRole('tab', { name: "Today's plan" })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('button', { name: 'Trigger cloud event' })).toBeVisible()
+  })
+  it('keeps an available day when the preferred demo day is absent', async () => {
+    const fetchMock = mockApi()
+    const original = fetchMock.getMockImplementation()!
+    fetchMock.mockImplementation((url, init) => url.endsWith('/days') ? Promise.resolve(json({ ...days, days: days.days.slice(0, 1) })) : original(url, init))
+    render(<App />)
+    await screen.findByRole('combobox', { name: 'Planning day' })
+    fireEvent.click(screen.getByRole('button', { name: 'Demo mode' }))
+    expect(screen.getByRole('combobox', { name: 'Planning day' })).toHaveValue('2024-07-01')
+  })
+  it('supports keyboard buttons and uses instant scrolling with reduced motion', async () => {
+    const user = userEvent.setup()
+    const scroll = vi.fn()
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: scroll })
+    vi.spyOn(window, 'matchMedia').mockImplementation(query => ({ matches: query.includes('prefers-reduced-motion'), media: query, onchange: null, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false }))
+    mockApi()
+    render(<App />)
+    const toggle = screen.getByRole('button', { name: 'Demo mode' })
+    toggle.focus()
+    await user.keyboard('{Enter}')
+    expect(scroll).toHaveBeenCalledWith(expect.objectContaining({ behavior: 'instant' }))
+    const guide = screen.getByRole('region', { name: 'Guided demo' })
+    within(guide).getByRole('button', { name: 'Next' }).focus()
+    await user.keyboard(' ')
+    expect(guide).toHaveTextContent('Side by side')
+    fireEvent.click(within(guide).getByRole('button', { name: 'Close' }))
+    expect(toggle).toHaveAttribute('aria-pressed', 'false')
+    delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView
+  })
+})

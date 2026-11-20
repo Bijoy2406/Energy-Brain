@@ -5,6 +5,7 @@ import { savingWords } from '../backtest/comparison'
 import { formatBdt, formatHours, formatInteger, formatKg, formatKw, formatLitres, formatPercent } from '../formatting'
 import AnimatedValue from './AnimatedValue'
 import BacktestCaveats from './BacktestCaveats'
+import ReportDownload from './ReportDownload'
 import BacktestChart from '../chart/BacktestChart'
 import { useLimitsNavigation } from '../hooks/useLimitsNavigation'
 
@@ -92,6 +93,7 @@ export default function BacktestView({ source, limitsRequest, onSeeLimits }: { s
       {([[0.5, 'Balanced w = 0.5 (headline)'], [1, 'Cheapest w = 1'], [0, 'Cleanest w = 0']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={weight === value} onClick={() => setWeight(value)}>{label}</button>)}
     </div>
     <p className="warning backtest-caution">Read with caution: synthetic load, simulated PV and synthetic outages; 2024 replay on one simulated site. <button type="button" className="limits-link" onClick={onSeeLimits}>See limits</button></p>
+    <ReportDownload firstDay={report.config.first_day} lastDay={report.config.last_day} weight={weight} />
     {selected ? <>
       <div className="comparison-grid">{baselines.map((key) => <ComparisonCard key={key} name={report.headline.baseline_names[key]} values={selected.vs[key]} requested={report.summary.days.requested} onSeeLimits={onSeeLimits} />)}</div>
       <DaysCovered report={report} health={selected.plan_health} />

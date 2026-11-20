@@ -84,6 +84,7 @@ WEEKDAY_NAMES = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturd
 
 PARETO_WEIGHTS = (0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.75, 1.0)
 PARETO_CACHE_SIZE = 64
+REPORT_CACHE_SIZE = 32
 PARETO_REL_TOL = 1e-6
 
 _UNSET = object()
@@ -208,6 +209,9 @@ class PlanService:
         self._whatif_inflight: dict[tuple, Future] = {}
         self.override_limiter = RateLimiter(6, 30, clock=clock)
         self.cloud_limiter = RateLimiter(6, 30, clock=clock)
+        self.report_limiter = RateLimiter(12, 60, clock=clock)
+        self._report_lock = threading.Lock()
+        self._report_cache: OrderedDict[tuple[str | None, float], bytes] = OrderedDict()
         self._tier_by_date: dict[date, str] = {}
         self._signals_by_date: dict[date, tuple[Any, str | None]] = {}
         self.hits = 0
@@ -220,6 +224,10 @@ class PlanService:
             self.settings.explain_per_ip_per_min, self.settings.explain_total_per_min, clock=clock
         )
         self._explain_slots = threading.BoundedSemaphore(self.settings.explain_concurrency)
+        self.transcribe_limiter = RateLimiter(
+            self.settings.transcribe_per_ip_per_min, self.settings.transcribe_total_per_min, clock=clock
+        )
+        self.transcribe_slots = threading.BoundedSemaphore(self.settings.transcribe_concurrency)
         self._stop = threading.Event()
         self._warmup_thread: threading.Thread | None = None
         self._warmup = {"state": "off", "planned": 0, "total": 0, "errors": 0}
@@ -245,6 +253,28 @@ class PlanService:
             if self._demo_days is None:
                 self._demo_days = load_demo_days(self.settings.demo_days_path)
             return self._demo_days
+
+    def report_pdf(
+        self, report: dict[str, Any], month: str | None, weight: float | None, client: str | None = None
+    ) -> bytes:
+        """Bounded PDF LRU. Its own lock serialises renders, independently of agents/HiGHS.
+
+        Every download is limited, including cache hits. Inputs are validated before counting.
+        The underlying backtest is immutable for this service's lifetime, as with backtest().
+        """
+        from energy_brain.api.report import render_report, report_data
+
+        data = report_data(report, month, weight)
+        key = (month, data.weight)
+        if client is not None:
+            self.report_limiter.hit(client)
+        with self._report_lock:
+            if key not in self._report_cache:
+                self._report_cache[key] = render_report(data)
+                while len(self._report_cache) > REPORT_CACHE_SIZE:
+                    self._report_cache.popitem(last=False)
+            self._report_cache.move_to_end(key)
+            return self._report_cache[key]
 
     def stored_answers(self) -> list[StoredAnswer]:
         with self._load_lock:
@@ -825,6 +855,7 @@ class PlanService:
             backtest=self.settings.backtest_path.exists(),
             demo_answers=len(self.stored_answers()),
             llm_key_configured=key_set,
+            transcription_available=key_set,
             llm_model=model,
             explain_cache=self.settings.explain_cache,
             cache=self.cache_stats(),

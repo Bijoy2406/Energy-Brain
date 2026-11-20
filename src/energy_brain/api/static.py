@@ -69,5 +69,8 @@ def mount_website(app: FastAPI) -> None:
     if not directory.is_dir() or not (directory / "index.html").is_file():
         return
     # Reserve the API's top-level namespaces, including docs and a conventional /api prefix.
-    reserved_roots = {"plan", "days", "backtest", "explain", "health", "docs", "redoc", "openapi.json", "api"}
+    reserved_roots = {
+        "plan", "days", "backtest", "explain", "health", "docs", "redoc", "openapi.json", "api",
+        "report", "simulate", "pareto", "transcribe",
+    }
     app.router.routes.append(WebsiteMount(directory, reserved_roots))

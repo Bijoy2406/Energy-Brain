@@ -5,6 +5,7 @@ import App from './App'
 import type { components } from './api/generated'
 import { days, planFixture } from './test/fixtures'
 import { backtestDaysFixture } from './test/backtestFixture'
+import { resetTranscriptionCheck } from './components/voiceSupport'
 
 type Answer = components['schemas']['ExplainResponse']
 const questions = [
@@ -28,8 +29,12 @@ function answer(overrides: Partial<Answer> = {}): Answer {
     cached_recorded_at: null, cached_model: null, live_error: null, ...overrides,
   }
 }
+// Server voice input is off unless a test turns it on: /health then fails like any other unmocked request.
+let voice: { available: boolean; transcribe: (init: RequestInit) => Promise<Response> } | null = null
 function mockApi(explain: (init: RequestInit) => Promise<Response> = async () => json(answer()), plan = planFixture()) {
   const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+    if (voice && url.endsWith('/health')) return json({ transcription_available: voice.available })
+    if (voice && url.includes('/transcribe')) return voice.transcribe(init)
     if (url.includes('/backtest/days')) return json(backtestDaysFixture())
     if (url.endsWith('/days')) return json(days)
     if (url.endsWith('/plan')) return json(plan)
@@ -46,7 +51,7 @@ async function start() {
   return screen.getByRole('textbox', { name: 'Ask about the plan' })
 }
 function ask() { fireEvent.click(screen.getByRole('button', { name: questions[0] })) }
-afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); voice = null; resetTranscriptionCheck() })
 
 it('sends exact suggestions with selected date and solved weight; shows verified provenance and sources', async () => {
   const fetchMock = mockApi(undefined, planFixture({ weight: 0.31, weight_requested: 0.305 }))
@@ -117,7 +122,7 @@ it.each([
   ['missing_data', 'The explainer does not have the data needed to answer this question.'],
   ['off_topic', 'The explainer can only answer questions about the energy plan.'],
   ['change_request', 'The explainer can explain the plan but cannot change or control it.'],
-  ['language', 'Only English questions are supported.'],
+  ['language', 'English questions are supported.'],
 ])('shows %s refusal and its answer', async (refusal_reason, explanation) => {
   mockApi(async () => json(answer({ verified: false, refusal_reason, answer: 'I cannot answer this question.' })))
   await start()
@@ -226,7 +231,7 @@ it('keeps history and labels answers about a different selected day', async () =
   await start()
   ask()
   await screen.findByText('Verified')
-  fireEvent.change(screen.getByRole('combobox'), { target: { value: '2024-07-01' } })
+  fireEvent.change(screen.getByRole('combobox', { name: 'Planning day' }), { target: { value: '2024-07-01' } })
   expect(screen.getByText('This answer is about a different day or weight than the one shown.')).toBeInTheDocument()
   expect(screen.getByText('Day 2024-07-02, w = 0.50')).toBeInTheDocument()
 })
@@ -349,4 +354,261 @@ it('uses the new selected weight while an older solved plan is still displayed',
   expect(fetchMock).toHaveBeenCalledWith('http://localhost:8000/explain', expect.objectContaining({
     body: JSON.stringify({ date: '2024-07-02', w: 0.7, question: questions[0] }),
   }))
+})
+
+it('hides voice controls when browser speech is unavailable', async () => {
+  mockApi()
+  await start()
+  expect(screen.queryByRole('button', { name: /microphone/i })).not.toBeInTheDocument()
+  ask()
+  await screen.findByText('Verified')
+  expect(screen.queryByRole('button', { name: /Listen/ })).not.toBeInTheDocument()
+})
+
+it('fills speech input without sending and reads answers with an English voice', async () => {
+  const recognition: {
+    lang: string; onresult: ((event: { results: { 0: { transcript: string } }[] }) => void) | null
+    onend: (() => void) | null; onerror: (() => void) | null
+    start: ReturnType<typeof vi.fn>; stop: ReturnType<typeof vi.fn>; abort: ReturnType<typeof vi.fn>
+  } = { lang: '', onresult: null, onend: null, onerror: null, start: vi.fn(), stop: vi.fn(), abort: vi.fn() }
+  class Recognition { constructor() { return recognition } }
+  vi.stubGlobal('webkitSpeechRecognition', Recognition)
+  const speak = vi.fn()
+  const cancel = vi.fn()
+  const voice = { lang: 'en-US', name: 'English' }
+  vi.stubGlobal('speechSynthesis', { getVoices: () => [voice], speak, cancel, addEventListener: vi.fn(), removeEventListener: vi.fn() })
+  vi.stubGlobal('SpeechSynthesisUtterance', class { text: string; lang = ''; voice = null; constructor(text: string) { this.text = text } })
+  const fetchMock = mockApi(async () => json(answer({ language: 'en', answer: 'Generator supplies 269.8 kW.' })))
+  await start()
+  fireEvent.click(screen.getByRole('button', { name: 'Start microphone' }))
+  expect(recognition.lang).toBe('en-US')
+  expect(recognition.start).toHaveBeenCalledOnce()
+  expect(screen.getByText(/Browser speech services may send audio/)).toBeVisible()
+  act(() => recognition.onresult?.({ results: [[{ transcript: 'Why is the generator on?' }]] }))
+  expect(screen.getByRole('textbox')).toHaveValue('Why is the generator on?')
+  expect(fetchMock.mock.calls.filter(([url]) => url.endsWith('/explain'))).toHaveLength(0)
+  act(() => recognition.onend?.())
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+  await screen.findByText('Verified')
+  fireEvent.click(screen.getByRole('button', { name: 'Listen' }))
+  expect(speak).toHaveBeenCalledWith(expect.objectContaining({ lang: 'en-US', voice, text: 'Generator supplies 269.8 kW.' }))
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Close plan explainer' }))
+  expect(cancel).toHaveBeenCalled()
+})
+
+function stubRecognition() {
+  const recognition: {
+    lang: string; onstart: (() => void) | null; onresult: ((event: { results: { 0: { transcript: string } }[] }) => void) | null
+    onend: (() => void) | null; onerror: ((event: { error?: string }) => void) | null
+    start: ReturnType<typeof vi.fn>; stop: ReturnType<typeof vi.fn>; abort: ReturnType<typeof vi.fn>
+  } = { lang: '', onstart: null, onresult: null, onend: null, onerror: null, start: vi.fn(), stop: vi.fn(), abort: vi.fn() }
+  class Recognition { constructor() { return recognition } }
+  vi.stubGlobal('webkitSpeechRecognition', Recognition)
+  return recognition
+}
+
+it.each([
+  ['not-allowed', /Microphone access is blocked/],
+  ['network', /Could not reach the browser.s speech service/],
+  ['audio-capture', /No microphone found/],
+  ['something-else', /Voice input did not work/],
+])('shows a visible message when speech recognition fails with %s', async (code, message) => {
+  const recognition = stubRecognition()
+  mockApi()
+  await start()
+  fireEvent.click(screen.getByRole('button', { name: 'Start microphone' }))
+  act(() => recognition.onstart?.())
+  expect(screen.getByText('Listening… speak now.')).toBeVisible()
+  act(() => { recognition.onerror?.({ error: code }); recognition.onend?.() })
+  expect(screen.getByText(message)).toBeVisible()
+  expect(screen.queryByText('Listening… speak now.')).not.toBeInTheDocument()
+  // The button recovers so the person can try again.
+  expect(screen.getByRole('button', { name: 'Start microphone' })).toBeEnabled()
+})
+
+it('says so when the browser heard nothing, and clears the message after a good result', async () => {
+  const recognition = stubRecognition()
+  mockApi()
+  await start()
+  fireEvent.click(screen.getByRole('button', { name: 'Start microphone' }))
+  act(() => recognition.onend?.())
+  expect(screen.getByText(/No speech heard/)).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: 'Start microphone' }))
+  expect(screen.queryByText(/No speech heard/)).not.toBeInTheDocument()
+  act(() => { recognition.onresult?.({ results: [[{ transcript: 'Why the generator?' }]] }); recognition.onend?.() })
+  expect(screen.getByRole('textbox')).toHaveValue('Why the generator?')
+  expect(screen.queryByText(/No speech heard/)).not.toBeInTheDocument()
+})
+
+it('hides listening without a matching voice and updates when voices load', async () => {
+  let voices: { lang: string; name: string }[] = [{ lang: 'fr-FR', name: 'French' }]
+  let changed: (() => void) | undefined
+  vi.stubGlobal('speechSynthesis', { getVoices: () => voices, speak: vi.fn(), cancel: vi.fn(),
+    addEventListener: (_: string, callback: () => void) => { changed = callback }, removeEventListener: vi.fn() })
+  vi.stubGlobal('SpeechSynthesisUtterance', class {})
+  mockApi(async () => json(answer({ language: 'en' })))
+  await start()
+  ask()
+  await screen.findByText('Verified')
+  expect(screen.queryByRole('button', { name: 'Listen' })).not.toBeInTheDocument()
+  voices = [{ lang: 'en-US', name: 'English' }]
+  act(() => changed?.())
+  expect(screen.getByRole('button', { name: 'Listen' })).toBeVisible()
+})
+
+// ---------------------------------------------------------------------------- server voice input (recorder)
+
+function stubRecorder(level: number) {
+  const tracks = [{ stop: vi.fn() }, { stop: vi.fn() }]
+  const getUserMedia = vi.fn(async () => ({ getTracks: () => tracks }))
+  Object.defineProperty(navigator, 'mediaDevices', { value: { getUserMedia }, configurable: true })
+  Object.defineProperty(URL, 'createObjectURL', { value: vi.fn(() => 'blob:recording'), configurable: true, writable: true })
+  Object.defineProperty(URL, 'revokeObjectURL', { value: vi.fn(), configurable: true, writable: true })
+  class Recorder {
+    state = 'inactive'
+    mimeType = 'audio/webm;codecs=opus'
+    ondataavailable: ((event: { data: Blob }) => void) | null = null
+    onstop: (() => void) | null = null
+    start() { this.state = 'recording' }
+    pause() { this.state = 'paused' }
+    resume() { this.state = 'recording' }
+    stop() {
+      this.state = 'inactive'
+      this.ondataavailable?.({ data: new Blob(['audio'], { type: this.mimeType }) })
+      this.onstop?.()
+    }
+  }
+  vi.stubGlobal('MediaRecorder', Recorder)
+  class Context {
+    createAnalyser() { return { fftSize: 0, smoothingTimeConstant: 0, getByteTimeDomainData: (data: Uint8Array) => data.fill(128 + Math.round(level * 128)) } }
+    createMediaStreamSource() { return { connect() {} } }
+    close() { return Promise.resolve() }
+  }
+  vi.stubGlobal('AudioContext', Context)
+  // jsdom's animation-frame timestamps use another clock than performance.now(); real browsers keep them in sync.
+  vi.stubGlobal('requestAnimationFrame', (callback: (time: number) => void) => window.setTimeout(() => callback(performance.now()), 16))
+  vi.stubGlobal('cancelAnimationFrame', (id: number) => window.clearTimeout(id))
+  return { tracks, getUserMedia }
+}
+// The recorder measures real time and level samples, so the tests really record for a moment.
+async function speakFor(ms = 900) { await act(async () => { await new Promise((resolve) => setTimeout(resolve, ms)) }) }
+async function record(ms = 900) {
+  fireEvent.click(await screen.findByRole('button', { name: 'Start recording' }))
+  await screen.findByRole('button', { name: 'Stop and save recording' })
+  await speakFor(ms)
+  fireEvent.click(screen.getByRole('button', { name: 'Stop and save recording' }))
+}
+const transcribed = (text: string, extra: Record<string, unknown> = {}) =>
+  json({ text, language: 'en', duration_s: 2.4, model: 'whisper-test', no_speech: false, ...extra })
+
+it('shows the voice button as a microphone icon, not text', async () => {
+  stubRecorder(0.2)
+  voice = { available: true, transcribe: async () => transcribed('x') }
+  mockApi()
+  await start()
+  const mic = await screen.findByRole('button', { name: 'Start recording' })
+  expect(mic.textContent).toBe('')
+  expect(mic.querySelector('svg')).not.toBeNull()
+})
+
+it('records, transcribes on the server and fills the input without sending it', async () => {
+  const { tracks } = stubRecorder(0.2)
+  const bodies: RequestInit[] = []
+  voice = { available: true, transcribe: async (init) => { bodies.push(init); return transcribed('Why is the generator on?') } }
+  const fetchMock = mockApi()
+  await start()
+  await record()
+  expect(screen.getByText(/Voice is sent to Groq to turn it into text and is not stored\./)).toBeVisible()
+  await waitFor(() => expect(screen.getByRole('textbox', { name: 'Ask about the plan' })).toHaveValue('Why is the generator on?'))
+  expect(bodies).toHaveLength(1)
+  expect((bodies[0].body as Blob).type).toBe('audio/webm;codecs=opus')
+  expect((bodies[0].headers as Record<string, string>)['Content-Type']).toBe('audio/webm;codecs=opus')
+  expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/transcribe?language=en'))).toBe(true)
+  expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/explain'))).toHaveLength(0) // never auto-sent
+  tracks.forEach((track) => expect(track.stop).toHaveBeenCalled()) // the browser's recording light goes off
+  expect(screen.getByRole('textbox', { name: 'Ask about the plan' })).toHaveFocus()
+  expect(screen.queryByText(/Turning your voice into text/)).not.toBeInTheDocument()
+  expect(await screen.findByRole('button', { name: 'Start recording' })).toBeEnabled() // ready for the next one
+})
+
+it('does not upload a recording that was too short or silent', async () => {
+  stubRecorder(0)
+  const transcribe = vi.fn(async () => transcribed('should not happen'))
+  voice = { available: true, transcribe }
+  mockApi()
+  await start()
+  await record(0) // stopped at once: too short
+  expect(await screen.findByText('Too short. Hold on a little longer and speak.')).toBeVisible()
+  await record(900) // long enough but nothing but silence
+  expect(await screen.findByText('No speech heard. Check your microphone and try again.')).toBeVisible()
+  expect(transcribe).not.toHaveBeenCalled()
+  expect(screen.getByRole('textbox', { name: 'Ask about the plan' })).toHaveValue('')
+})
+
+it('says so when the server found no speech', async () => {
+  stubRecorder(0.2)
+  const transcribe = vi.fn(async () => transcribed('', { no_speech: true }))
+  voice = { available: true, transcribe }
+  mockApi()
+  await start()
+  await record()
+  expect(await screen.findByText('No speech heard. Check your microphone and try again.')).toBeVisible()
+  expect(transcribe).toHaveBeenCalledOnce() // loud enough to upload; the server then found no speech
+  expect(screen.getByRole('textbox', { name: 'Ask about the plan' })).toHaveValue('')
+})
+
+it.each([
+  [429, { code: 'rate_limited', message: 'slow down', retry_after_s: 7 }, /Try again in 7 s/],
+  [503, { code: 'transcription_unavailable', message: 'no key', retry_after_s: null }, /not set up on this server/],
+  [502, { code: 'transcription_failed', message: 'upstream', retry_after_s: null }, /Could not turn the recording into text/],
+])('shows a readable message for server error %s and lets you try again', async (status, detail, message) => {
+  stubRecorder(0.2)
+  voice = { available: true, transcribe: async () => json({ detail }, status) }
+  mockApi()
+  await start()
+  await record()
+  expect(await screen.findByText(message)).toBeVisible()
+  expect(await screen.findByRole('button', { name: 'Start recording' })).toBeEnabled()
+})
+
+it('explains a denied or missing microphone', async () => {
+  const { getUserMedia } = stubRecorder(0.2)
+  voice = { available: true, transcribe: async () => transcribed('x') }
+  mockApi()
+  await start()
+  getUserMedia.mockRejectedValueOnce(Object.assign(new DOMException('no', 'NotAllowedError')))
+  fireEvent.click(await screen.findByRole('button', { name: 'Start recording' }))
+  expect((await screen.findAllByText('Microphone access denied')).length).toBeGreaterThan(0)
+  getUserMedia.mockRejectedValueOnce(new DOMException('none', 'NotFoundError'))
+  fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+  expect((await screen.findAllByText('No microphone found')).length).toBeGreaterThan(0)
+})
+
+it('releases the microphone and uploads nothing when the chat is closed while recording', async () => {
+  const { tracks } = stubRecorder(0.2)
+  const transcribe = vi.fn(async () => transcribed('x'))
+  voice = { available: true, transcribe }
+  mockApi()
+  await start()
+  fireEvent.click(await screen.findByRole('button', { name: 'Start recording' }))
+  await screen.findByRole('button', { name: 'Stop and save recording' })
+  await speakFor(300)
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Close plan explainer' }))
+  await waitFor(() => tracks.forEach((track) => expect(track.stop).toHaveBeenCalled()))
+  expect(transcribe).not.toHaveBeenCalled()
+})
+
+it('uses the browser speech recognition when the server cannot transcribe', async () => {
+  stubRecorder(0.2)
+  const recognition = { lang: '', onresult: null, onend: null, onerror: null, onstart: null, start: vi.fn(), stop: vi.fn(), abort: vi.fn() }
+  class Recognition { constructor() { return recognition } }
+  vi.stubGlobal('webkitSpeechRecognition', Recognition)
+  voice = { available: false, transcribe: async () => transcribed('x') }
+  mockApi()
+  await start()
+  const browserMic = await screen.findByRole('button', { name: 'Start microphone' })
+  expect(browserMic.textContent).toBe('') // an icon, not the word Mic
+  fireEvent.click(browserMic)
+  expect(recognition.start).toHaveBeenCalledOnce()
+  expect(screen.getByText(/Browser speech services may send audio/)).toBeVisible()
 })

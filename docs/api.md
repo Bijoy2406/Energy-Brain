@@ -46,6 +46,7 @@ reserved, and the OpenAPI schema is unchanged. See [deployment](deploy.md) for t
 | GET | `/backtest` | `?include_sha=false` | `BacktestSummary` |
 | GET | `/backtest/days` | `?weight=<0.5\|1\|0>` (default: headline weight) | `BacktestDaysResponse` |
 | POST | `/explain` | `{"date", "w", "question"}` | `ExplainResponse` |
+| POST | `/transcribe` | `?language=auto\|en`, raw audio bytes (`audio/webm` etc.) | `TranscribeResponse`: voice to text |
 | GET | `/health` | – | `HealthResponse` |
 | GET | `/docs`, `/openapi.json` | – | FastAPI's interactive docs and schema |
 
@@ -285,6 +286,44 @@ The headline figures use the `adjusted_*` values. A weight that is not in the ba
 run) gives 422 `weight_not_in_backtest`. If the report is missing, both endpoints return 404
 `backtest_unavailable` (run `python -m energy_brain.evaluator`).
 
+### `GET /report`
+
+Download an A4 PDF for the owner / CFO (FR-13):
+
+```bash
+curl -f 'localhost:8000/report?month=2024-07&weight=0.5' -o energy-brain-report-2024-07.pdf
+```
+
+The response is `application/pdf`, with
+`Content-Disposition: attachment; filename="energy-brain-report-2024-07.pdf"`.
+`month` is `YYYY-MM` inside `config.first_day` through `config.last_day` in the backtest
+(currently 2024-01 .. 2024-12). Omit it for the whole period, labelled "2024 full year";
+the full-period filename includes the first and last dates. `weight` defaults to the headline
+weight and must have been run in the backtest (currently 0, 0.5 or 1).
+
+Malformed queries return standard validation 422. A month outside the backtest, including an
+invalid month number, returns 422 `month_not_in_backtest` with the available range in the message.
+An untested numeric weight returns 422 `weight_not_in_backtest`. A missing backtest file returns
+404 `backtest_unavailable`, as for `/backtest`.
+
+The report has three pages: adjusted cost, signed savings and CO2 changes against both named
+baselines, included/excluded days and reasons, outage days, generator hours, diesel and unserved
+energy; daily savings bars (weekly for the whole period), best/worst days and methodology;
+then every backtest caveat and config provenance, with hashes shortened to 12 characters.
+Positive CO2 change means **more** emissions. At the headline weight, full-year CO2 is higher
+than the solar-first baseline. Figures come from sums of included backtest day rows, or from
+`summary.by_weight` for the full period. The tariff and emission values and citations come from
+the existing signals config. Every report identifies this as historical replay on synthetic
+data, not a live deployment or a guarantee of future savings.
+
+PDF bytes are deterministic, with invariant PDF metadata and no current timestamp or random IDs.
+A separate LRU stores 32 rendered PDFs keyed by (month, weight); the backtest is loaded once per
+service lifetime. Restart after replacing the backtest or signals config. Rendering uses a
+separate lock and does not call the planner or block its solver lock.
+Every download, including cache hits, counts toward **12 per minute per client IP and 60 overall**.
+Excess requests return 429 `rate_limited`, `retry_after_s` and `Retry-After`.
+The Backtest tab's small download control uses the selected backtest weight and displays API errors.
+
 ### `POST /explain`
 
 ```bash
@@ -334,24 +373,52 @@ The question is about the **same cached plan** that `/plan` returns for (date, w
   - at most 2 LLM calls at once (503 `busy` after 30 s).
 - **Speed:** a live answer takes about 2–10 s (Groq), a stored one milliseconds.
 
+### `POST /transcribe`
+
+Voice input for the chat box (English only). The page records a few seconds of audio (MediaRecorder) and posts the **raw audio
+bytes** (no multipart) with the recording's content type: `audio/webm`, `audio/ogg`, `audio/mp4`, `audio/mpeg` or
+`audio/wav` (a `;codecs=opus` parameter is fine). Optional `?language=auto|en` (default `auto`: the speech model
+detects it). Maximum 2 MB (the page stops at 30 s).
+
+```json
+{"text": "Why did you run the generator at 7pm?", "language": "en", "duration_s": 3.31,
+ "model": "whisper-large-v3-turbo", "no_speech": false}
+```
+
+- Speech-to-text runs on **Groq Whisper** with the same `LLM_API_KEY` as the Explainer; the model is
+  `EB_TRANSCRIBE_MODEL` (default `whisper-large-v3-turbo`).
+- **Privacy:** the audio is sent to Groq to be turned into text. It is not stored, and neither the audio nor the
+  text is logged (only size, duration, language and status). The text only fills the input box; the person sends
+  it (or not) themselves, and it is never given to the planner.
+- **Silence and noise:** Whisper invents text on silence. Segments it flags as not speech or low confidence, text
+  that is only punctuation or one repeated token, and a transcript that is exactly a known silence phrase
+  ("Thank you.", "you", "Thanks for watching") are dropped: the answer is `200` with `"text": ""` and
+  `"no_speech": true`. The page also skips the upload when the microphone level stayed silent.
+- **Accuracy:** English speech works well; the person can always correct the text before sending.
+- **Limits:** 12 requests per minute per client and 60 in total, at most 2 uploads at once. Errors: 413
+  `audio_too_large`, 415 `unsupported_audio`, 422 `empty_audio`, 429 `rate_limited` (`retry_after_s`), 502
+  `transcription_failed`, 503 `transcription_unavailable` (no key) or `busy`.
+
 ### `GET /health`
 
 ```json
 {"status": "ok", "version": "0.1.0", "processed_data": true, "models": true, "sample_data": true,
- "backtest": true, "demo_answers": 5, "llm_key_configured": true, "llm_model": "openai/gpt-oss-120b",
+ "backtest": true, "demo_answers": 5, "llm_key_configured": true, "transcription_available": true,
+ "llm_model": "openai/gpt-oss-120b",
  "explain_cache": "fallback",
  "cache": {"size": 24, "max_size": 256, "hits": 0, "misses": 24, "inflight": 0},
  "warmup": {"enabled": true, "state": "done", "planned": 24, "total": 24, "errors": 0}}
 ```
 
-`llm_key_configured` is only true/false. The key itself never appears in any response or log.
+`llm_key_configured` and `transcription_available` are only true/false (voice input needs the same key). The key
+itself never appears in any response or log.
 
 ## Errors
 
 | Status | Body | When |
 | --- | --- | --- |
 | 422 | FastAPI's standard `{"detail": [{"loc": [...], "msg": "...", "type": "..."}]}` | normal body or query validation (bad date, date out of range, `w` outside [0, 1], empty or too-long question, unknown field); what-if validation uses ErrorBody |
-| 404 / 422 / 429 / 503 / 500 | `{"detail": {"code": "...", "message": "...", "retry_after_s": null}}` | codes: `invalid_overrides`, `invalid_cloud_event`, `backtest_unavailable`, `weight_not_in_backtest`, `rate_limited`, `busy`, `forecast_unavailable`, `internal_error` |
+| 404 / 422 / 429 / 503 / 500 | `{"detail": {"code": "...", "message": "...", "retry_after_s": null}}` | codes: `invalid_overrides`, `invalid_cloud_event`, `backtest_unavailable`, `month_not_in_backtest`, `weight_not_in_backtest`, `audio_too_large`, `unsupported_audio`, `empty_audio`, `transcription_failed`, `transcription_unavailable`, `rate_limited`, `busy`, `forecast_unavailable`, `internal_error` |
 
 Error bodies never contain a stack trace or a secret. Details of an internal error go to the server log only.
 

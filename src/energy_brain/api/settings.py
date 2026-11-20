@@ -4,6 +4,8 @@
   ``http://localhost:5173`` and ``http://127.0.0.1:5173``.
 - ``EB_EXPLAIN_CACHE`` (default ``fallback``): stored verified demo answers are served ``fallback`` = only
   when the live LLM call fails, ``prefer`` = first, for an exact match (demo day), or ``off``.
+- ``EB_TRANSCRIBE_MODEL`` (default ``whisper-large-v3-turbo``): the Groq Whisper model behind
+  ``POST /transcribe``, read at call time (see ``api/transcribe.py``).
 - ``EB_WARMUP`` (default ``1``): ``0`` disables planning the demo days in a background thread at startup.
 
 The LLM settings (``LLM_PROVIDER``, ``LLM_MODEL``, ``LLM_API_KEY``) are read by the Explainer's ``GroqClient``
@@ -38,6 +40,11 @@ class ApiSettings:
     explain_per_ip_per_min: int = 5
     explain_total_per_min: int = 30
     explain_concurrency: int = 2
+    #: /transcribe limits: requests per minute per client IP and in total, concurrent uploads, body size.
+    transcribe_per_ip_per_min: int = 12
+    transcribe_total_per_min: int = 60
+    transcribe_concurrency: int = 2
+    transcribe_max_bytes: int = 2 * 1024 * 1024
     #: Seconds an /explain request waits for a free LLM slot before 503.
     explain_wait_s: float = 30.0
     demo_days_path: Path = ROOT_DIR / "config" / "demo_days.yaml"

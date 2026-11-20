@@ -1,8 +1,10 @@
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
-  plugins: [react()],
+  // Tailwind is used only by src/components/ui (see tweenly-ai-recorder-utils/review-theme.css).
+  plugins: [react(), tailwindcss()],
   server: { port: 5173, strictPort: true },
   test: {
     environment: 'jsdom',

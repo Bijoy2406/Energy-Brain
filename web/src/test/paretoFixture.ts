@@ -1,5 +1,5 @@
 import type { ParetoPoint, ParetoResponse } from '../tradeoff/tradeoffData'
-export function paretoFixture(overrides: Partial<ParetoResponse> = {}): ParetoResponse {
+export function paretoFixture(overrides: Partial<ParetoResponse> = {}): ParetoResponse & { basis: string } {
   const point = (weight: number, group: number, cost_bdt: number, co2_kg: number, efficient = true): ParetoPoint => ({
     weight, group, cost_bdt, co2_kg, efficient, generator_hours: 2, diesel_litres: 100,
     status: 'optimal', safe: true, risk_ok: true, replans: 0, same_as_weight: null, plan_cached: false,

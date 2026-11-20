@@ -1,0 +1,38 @@
+.report-download {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.75rem;
+  max-width: 100%;
+  color: var(--text-primary);
+}
+
+.report-download label {
+  display: grid;
+  gap: 0.25rem;
+  flex: 0 1 12rem;
+  min-width: 0;
+  font-size: 0.875rem;
+}
+
+.report-download select,
+.report-download button {
+  min-height: 2.75rem;
+  max-width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.report-download :is(button, select):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.report-download button { cursor: pointer; }
+.report-download button:hover { background: var(--surface-tint); }
+.report-download :disabled { opacity: 0.65; cursor: wait; }
+.report-download-error { flex-basis: 100%; margin: 0; overflow-wrap: anywhere; }

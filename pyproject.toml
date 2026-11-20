@@ -27,6 +27,7 @@ dependencies = [
     # backend
     "fastapi>=0.110",
     "uvicorn>=0.27",
+    "reportlab>=4.4",  # deterministic PDF reports; built-in fonts only
     # Explainer LLM client (#19): Groq through its OpenAI-compatible API
     "openai>=1.40",
 ]
@@ -36,6 +37,7 @@ dev = [
     "pytest>=8.0",
     "ruff>=0.4",
     "httpx>=0.27",  # FastAPI TestClient (API tests, #21)
+    "pypdf>=5",  # PDF report content checks
     "jupyter>=1.0",
     "matplotlib>=3.8",
 ]
