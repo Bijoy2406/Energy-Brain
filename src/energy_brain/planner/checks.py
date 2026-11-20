@@ -8,6 +8,7 @@ not look at the optimisation model.
 from __future__ import annotations
 
 from energy_brain.planner import rules
+from energy_brain.planner.fixes import SlotFixes
 from energy_brain.schemas import AssetConstraints, Forecast, Schedule, SignalTable
 from energy_brain.timeaxis import slot_hours
 
@@ -27,6 +28,8 @@ def find_violations(
     assets: AssetConstraints,
     reserve_margin_kwh: float = 0.0,
     tol: float = TOL,
+    *,
+    fixes: SlotFixes | None = None,
 ) -> list[str]:
     """Return one human-readable message per violated hard constraint (empty list = all satisfied)."""
     s, h = schedule, slot_hours()
@@ -105,4 +108,11 @@ def find_violations(
             if s.generator_kw[t] > tol and not (gen.min_kw - tol <= s.generator_kw[t] <= gen.rated_kw + tol)
         ],
     )
+    if fixes is not None:
+        for fix in fixes.slots:
+            for name, value in fix.values().items():
+                check(
+                    f"fixed {name} = {value:g} kW",
+                    [fix.slot] if abs(getattr(s, name)[fix.slot] - value) > tol else [],
+                )
     return out

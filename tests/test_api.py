@@ -724,3 +724,383 @@ def test_warmup_plans_demo_days_in_the_background(dirs):
     assert h.cache.size == 3 * len(set(PARETO_WEIGHTS) | {0.5})
     keys = service.warmup_keys()
     assert keys[0] == (date.fromisoformat(DEMO_DAY), 0.5) and keys[-1][0] == last_plan_day()
+
+
+# ---------------------------------------------------------------------------------------------- what-ifs
+
+
+def test_override_impact_and_default_cache_isolation(dirs):
+    service = PlanService(settings_for(dirs))
+    with client_for(service, agent_with(grounded_script())) as c:
+        default = c.post("/plan", json={"date": DEMO_DAY, "w": 0.5}).json()
+        request = {
+            "date": DEMO_DAY,
+            "w": 0.5,
+            "overrides": [{"time": "13:00", "battery_kw": 100, "generator_kw": 300}],
+        }
+        result = c.post("/plan", json=request)
+        assert result.status_code == 200, result.text
+        body = result.json()
+        impact = body["override"]
+        assert impact["applied"] == request["overrides"]
+        assert impact["feasible"]
+        assert impact["baseline"] == default["plan"]["totals"]
+        assert body["plan"]["schedule"]["generator_kw"][52] == pytest.approx(300)
+        assert body["plan"]["schedule"]["battery_discharge_kw"][52] == 0
+        assert body["plan"]["schedule"]["battery_charge_kw"][52] == pytest.approx(100)
+        for name in ("cost_bdt", "co2_kg", "generator_hours", "diesel_litres"):
+            assert impact["delta"][name] == pytest.approx(
+                body["plan"]["totals"][name] - default["plan"]["totals"][name]
+            )
+        again = c.post("/plan", json={"date": DEMO_DAY, "w": 0.5}).json()
+        assert again["override"] is None
+        assert again["plan"] == default["plan"]
+        assert list(again) == list(default)
+        assert service.cache_stats().size == 1
+        cached = c.post("/plan", json=request).json()
+        assert cached["cached"] and cached["plan"] == body["plan"]
+        explanation = c.post("/explain", json={"date": DEMO_DAY, "w": 0.5, "question": QUESTION}).json()
+        assert explanation["verified"]
+        assert str(round(default["plan"]["totals"]["cost_bdt"], 1)) in explanation["answer"]
+
+
+@pytest.mark.parametrize(
+    "overrides, needle",
+    [
+        ([{"time": "19:01", "battery_kw": 0}], "15-minute"),
+        ([{"time": "24:00", "battery_kw": 0}], "HH:MM"),
+        ([{"time": "7:00", "battery_kw": 0}], "HH:MM"),
+        ([{"time": "19:00"}], "at least one"),
+        ([{"time": "19:00", "battery_kw": 0}] * 2, "duplicate"),
+        ([{"time": "19:00", "generator_kw": 1}], "generator_kw"),
+        ([{"time": "19:00", "generator_kw": 9999}], "generator_kw"),
+        ([{"time": "19:00", "battery_kw": 9999}], "battery_kw"),
+        ([{"time": "19:00", "battery_kw": -9999}], "battery_kw"),
+        ([{"time": "19:00", "battery_kw": "NaN"}], "finite"),
+        ([{"time": "19:00", "battery_kw": 0}] * 97, "96"),
+    ],
+)
+def test_override_validation_error_body(shared, overrides, needle):
+    _, c = shared
+    r = c.post("/plan", json={"date": DEMO_DAY, "w": 0.5, "overrides": overrides})
+    assert r.status_code == 422, r.text
+    assert r.json()["detail"]["code"] == "invalid_overrides"
+    assert needle in r.json()["detail"]["message"]
+
+
+def test_impossible_override_returns_unsafe_with_reason(shared):
+    _, c = shared
+    r = c.post(
+        "/plan",
+        json={
+            "date": DEMO_DAY,
+            "w": 0.5,
+            "overrides": [{"time": f"0{t // 4}:{t % 4 * 15:02d}", "battery_kw": -500} for t in range(8)],
+        },
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert not body["override"]["feasible"] and not body["safe"] and not body["risk_ok"]
+    assert any("SoC floor" in b for b in body["banners"])
+    assert any("00:" in b and "500" in b for b in body["banners"])
+
+
+def test_cloud_replan_demo_prefix_constraints_and_time(shared):
+    from energy_brain.planner import find_violations
+
+    service, c = shared
+    baseline = c.post("/plan", json={"date": DEMO_DAY, "w": 0.5}).json()
+    r = c.post(
+        "/simulate/cloud",
+        json={"date": DEMO_DAY, "w": 0.5, "time": "13:00", "drop_pct": 60, "duration_minutes": 120},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    before, after = (PlanResponse.model_validate(body[k]) for k in ("before", "after"))
+    assert before.plan.model_dump(mode="json") == baseline["plan"]
+    assert body["affected_slots"] == {"start": 52, "end": 60}
+    assert body["event"]["time"] == "13:00" and body["event"]["drop_pct"] == 60
+    for name in type(after.plan.schedule).model_fields:
+        assert getattr(after.plan.schedule, name)[:52] == pytest.approx(
+            getattr(before.plan.schedule, name)[:52], abs=1e-4
+        )
+    for q in ("p10_kw", "p50_kw", "p90_kw"):
+        old, new = getattr(before.forecast.solar, q), getattr(after.forecast.solar, q)
+        assert new[:52] == old[:52] and new[60:] == old[60:]
+        assert new[52:60] == pytest.approx([v * 0.4 for v in old[52:60]])
+    assert not find_violations(
+        after.plan.schedule, after.forecast, after.signals, after.assets, after.plan.reserve_margin_kwh
+    )
+    assert body["safe"] and body["risk_ok"]
+    assert body["replan_seconds"] < 10, f"Demo cloud re-plan took {body['replan_seconds']:.3f} s"
+    print(f"\nDemo cloud replan_seconds={body['replan_seconds']:.6f}")
+    assert any("simulated cloud event" in b and "historical replay" in b for b in body["banners"])
+    for name in ("cost_bdt", "co2_kg", "generator_hours", "diesel_litres"):
+        assert body["delta"][name] == pytest.approx(
+            getattr(after.plan.totals, name) - getattr(before.plan.totals, name)
+        )
+    assert service.get_plan(date(2024, 7, 2), 0.5)[0].context.forecast == before.forecast
+
+
+def test_cloud_clips_at_midnight_and_handles_slot_zero(shared):
+    _, c = shared
+    for clock, expected in [("23:45", {"start": 95, "end": 96}), ("00:00", {"start": 0, "end": 8})]:
+        r = c.post("/simulate/cloud", json={"date": DEMO_DAY, "w": 0.5, "time": clock, "drop_pct": 100})
+        assert r.status_code == 200, r.text
+        assert r.json()["affected_slots"] == expected
+        assert r.json()["event"]["duration_minutes"] == 120
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"time": "13:01"},
+        {"time": "24:00"},
+        {"drop_pct": 0},
+        {"drop_pct": 101},
+        {"duration_minutes": 14},
+        {"duration_minutes": 721},
+    ],
+)
+def test_cloud_bad_input(shared, change):
+    _, c = shared
+    payload = {"date": DEMO_DAY, "w": 0.5, "time": "13:00", "drop_pct": 60, **change}
+    r = c.post("/simulate/cloud", json=payload)
+    assert r.status_code == 422
+    assert r.json()["detail"]["code"] == "invalid_cloud_event"
+
+
+def test_whatif_rate_limits_and_cache_hits(dirs):
+    service = PlanService(settings_for(dirs))
+    service.override_limiter = RateLimiter(1, 10)
+    service.cloud_limiter = RateLimiter(1, 10)
+    with client_for(service) as c:
+        for path, extra in [
+            ("/plan", {"overrides": [{"time": "19:00", "battery_kw": 0}]}),
+            ("/simulate/cloud", {"time": "13:00", "drop_pct": 60}),
+        ]:
+            payload = {"date": DEMO_DAY, "w": 0.5, **extra}
+            assert c.post(path, json=payload).status_code == 200
+            assert c.post(path, json=payload).status_code == 200
+            r = c.post(path, json={**payload, "w": 0.6})
+            assert r.status_code == 429, r.text
+            assert r.json()["detail"]["code"] == "rate_limited"
+            assert float(r.headers["Retry-After"]) >= 1
+
+
+def test_cloud_non_aligned_duration_covers_whole_slots(shared):
+    _, c = shared
+    r = c.post(
+        "/simulate/cloud",
+        json={"date": DEMO_DAY, "w": 0.5, "time": "13:00", "drop_pct": 60, "duration_minutes": 16},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["affected_slots"] == {"start": 52, "end": 54}
+
+
+def test_cloud_infeasible_during_outage_is_honest(dirs):
+    from energy_brain.planner import MilpPlanner
+    from energy_brain.risk import P10RiskAgent
+    from energy_brain.stubs import StubAssetProvider, StubForecastAgent, StubSignalAgent
+
+    start = PlanService.start_of(date(2024, 7, 2))
+    forecast = StubForecastAgent().run(start)
+    solar = [200.0 if t == 52 else 0.0 for t in range(96)]
+    forecast = forecast.model_copy(
+        update={
+            "solar": type(forecast.solar)(p10_kw=solar, p50_kw=solar, p90_kw=solar),
+            "load": type(forecast.load)(p10_kw=[120.0] * 96, p50_kw=[120.0] * 96, p90_kw=[120.0] * 96),
+        }
+    )
+    signals = StubSignalAgent().run(start).model_copy(update={"outage": [t == 52 for t in range(96)]})
+    assets = StubAssetProvider().run(start)
+    assets = assets.model_copy(
+        update={
+            "battery": assets.battery.model_copy(update={"max_discharge_kw": 1.0}),
+            "generator": assets.generator.model_copy(update={"min_kw": 0.0, "rated_kw": 100.0}),
+            "hvac": assets.hvac.model_copy(update={"occupied": [False] * 96}),
+            "ev": assets.ev.model_copy(update={"energy_required_kwh": 0}),
+        }
+    )
+
+    class Input:
+        def __init__(self, value):
+            self.value = value
+
+        def run(self, start):
+            return self.value
+
+    service = PlanService(
+        settings_for(dirs),
+        agent_factory=lambda: {
+            "forecast_agent": Input(forecast),
+            "signal_agent": Input(signals),
+            "assets": Input(assets),
+            "planner": MilpPlanner(),
+            "risk": P10RiskAgent(),
+        },
+    )
+    with client_for(service) as c:
+        r = c.post(
+            "/simulate/cloud",
+            json={"date": DEMO_DAY, "w": 0.5, "time": "13:00", "drop_pct": 100, "duration_minutes": 15},
+        )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["before"]["safe"]
+    assert not body["safe"] and not body["risk_ok"] and not body["after"]["safe"]
+    assert body["after"]["plan"]["status"] == "infeasible"
+    assert any("cannot be served" in b for b in body["banners"])
+    assert any("NOT SAFE TO EXECUTE" in b for b in body["banners"])
+    for name in ("battery_charge_kw", "battery_discharge_kw", "generator_kw", "ev_charge_kw", "hvac_kw"):
+        assert body["before"]["plan"]["schedule"][name][:52] == pytest.approx(
+            body["after"]["plan"]["schedule"][name][:52], abs=1e-4
+        )
+
+
+@pytest.mark.parametrize("kind", ["override", "cloud"])
+def test_whatif_single_flight_and_cache_available_during_solve(dirs, monkeypatch, kind):
+    from concurrent.futures import Future, ThreadPoolExecutor
+
+    import energy_brain.api.service as module
+    from energy_brain.api.models import CloudRequest, SlotOverride
+    from energy_brain.planner import MilpPlanner
+
+    entered, release, following = threading.Event(), threading.Event(), threading.Event()
+
+    class BlockingPlanner(MilpPlanner):
+        fixed_calls = 0
+
+        def plan(self, *args, fixes=None, **kwargs):
+            if fixes is not None:
+                self.fixed_calls += 1
+                entered.set()
+                assert release.wait(10), "test did not release the solve"
+            return super().plan(*args, fixes=fixes, **kwargs)
+
+    class ObservedFuture(Future):
+        def result(self, timeout=None):
+            following.set()
+            return super().result(timeout)
+
+    planner = BlockingPlanner()
+    factory = default_agent_factory(settings_for(dirs))
+    service = PlanService(settings_for(dirs), agent_factory=lambda: {**factory(), "planner": planner})
+    day = date(2024, 7, 2)
+    baseline, _ = service.get_plan(day, 0.5)
+    monkeypatch.setattr(module, "Future", ObservedFuture)
+
+    def solve():
+        if kind == "cloud":
+            return service.cloud_response(CloudRequest(date=day, w=0.5, time="13:00", drop_pct=60)).after
+        return service.override_response(day, 0.5, [SlotOverride(time="13:00", battery_kw=100)])
+
+    with ThreadPoolExecutor(3) as pool:
+        first = pool.submit(solve)
+        try:
+            assert entered.wait(5)
+            second = pool.submit(solve)
+            assert following.wait(5)
+            # A cached normal plan is readable while HiGHS and a what-if follower are blocked.
+            cached = pool.submit(service.get_plan, day, 0.5).result(timeout=2)
+            assert cached[0] is baseline and cached[1]
+        finally:
+            release.set()
+        responses = [f.result(timeout=15) for f in (first, second)]
+    assert sorted(r.cached for r in responses) == [False, True]
+    assert responses[0].plan == responses[1].plan
+    assert planner.fixed_calls == 1
+    assert service.get_plan(day, 0.5)[0] is baseline
+
+
+def test_whatif_cache_is_bounded_and_default_plans_stay_clean(dirs, monkeypatch):
+    import energy_brain.api.service as module
+    from energy_brain.api.models import SlotOverride
+
+    monkeypatch.setattr(module, "WHATIF_CACHE_SIZE", 2)
+    service = PlanService(settings_for(dirs))
+    day = date(2024, 7, 2)
+    baseline, _ = service.get_plan(day, 0.5)
+    for power in (10, 20, 30):
+        response = service.override_response(day, 0.5, [SlotOverride(time="13:00", battery_kw=power)])
+        assert not response.cached
+    assert service.override_response(day, 0.5, [SlotOverride(time="13:00", battery_kw=30)]).cached
+    assert not service.override_response(day, 0.5, [SlotOverride(time="13:00", battery_kw=10)]).cached
+    assert service.get_plan(day, 0.5)[0] is baseline
+
+
+def test_explainer_rejects_override_request(shared):
+    _, c = shared
+    r = c.post(
+        "/explain",
+        json={
+            "date": DEMO_DAY,
+            "w": 0.5,
+            "question": QUESTION,
+            "overrides": [{"time": "19:00", "battery_kw": 0}],
+        },
+    )
+    assert r.status_code == 422
+
+
+def test_default_plan_null_and_empty_overrides_are_identical(shared):
+    _, c = shared
+    bodies = [
+        c.post("/plan", json={"date": DEMO_DAY, "w": 0.5, **extra}).json()
+        for extra in ({}, {"overrides": None}, {"overrides": []})
+    ]
+    for b in bodies:
+        b.pop("cached")
+    assert bodies[0] == bodies[1] == bodies[2]
+    assert list(bodies[0])[-1] == "override" and bodies[0]["override"] is None
+
+
+def test_insufficient_override_names_time_and_power(shared):
+    _, c = shared
+    r = c.post(
+        "/plan",
+        json={
+            "date": DEMO_DAY,
+            "w": 0.5,
+            "overrides": [{"time": "19:00", "battery_kw": 0, "generator_kw": 300}],
+        },
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert not body["override"]["feasible"]
+    assert any("19:00" in b and "generator_kw=300" in b and "unserved" in b for b in body["banners"])
+
+
+def test_risk_failing_whatifs_are_not_labelled_safe(dirs):
+    from energy_brain.risk import format_reason
+    from energy_brain.schemas import RiskReport
+
+    class RejectRisk:
+        def check(self, plan, forecast, signals, assets):
+            return RiskReport(
+                ok=False,
+                reasons=[
+                    format_reason(
+                        {
+                            "check": "unserved_energy",
+                            "fixable": "no",
+                            "detail": "test stress failure",
+                        }
+                    )
+                ],
+            )
+
+    factory = default_agent_factory(settings_for(dirs))
+    service = PlanService(settings_for(dirs), agent_factory=lambda: {**factory(), "risk": RejectRisk()})
+    with client_for(service) as c:
+        override = c.post(
+            "/plan", json={"date": DEMO_DAY, "w": 0.5, "overrides": [{"time": "13:00", "battery_kw": 100}]}
+        ).json()
+        assert override["override"]["feasible"]
+        assert not override["safe"] and not override["risk_ok"]
+        cloud = c.post(
+            "/simulate/cloud", json={"date": DEMO_DAY, "w": 0.5, "time": "13:00", "drop_pct": 60}
+        ).json()
+        assert not cloud["safe"] and not cloud["risk_ok"]
+        assert not cloud["after"]["safe"] and not cloud["before"]["safe"]
+        assert any("Risk check failed" in b for b in cloud["banners"])

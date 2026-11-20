@@ -24,11 +24,12 @@ import time
 from energy_brain.accounting import compute_totals
 from energy_brain.planner import rules
 from energy_brain.planner.checks import TOL, find_violations
+from energy_brain.planner.fixes import SlotFixes
 from energy_brain.planner.model import Scales, build_model
 from energy_brain.planner.reference import rule_based_schedule
 from energy_brain.planner.solve import TIME_LIMIT_S, solve_model
 from energy_brain.schemas import AssetConstraints, Forecast, PlanResult, PlanStatus, Schedule, SignalTable
-from energy_brain.timeaxis import slot_hours
+from energy_brain.timeaxis import slot_hours, slot_minutes
 
 #: Every unsafe / infeasible PlanResult has ``notes[0]`` starting with this.
 UNSAFE_PREFIX = "NOT SAFE TO EXECUTE"
@@ -74,15 +75,20 @@ class MilpPlanner:
         assets: AssetConstraints,
         weight: float,
         reserve_margin_kwh: float = 0.0,
+        fixes: SlotFixes | None = None,
     ) -> PlanResult:
         """Minimise ``w * cost + (1 - w) * CO2`` (normalised); never raises for an infeasible day.
 
-        Raises ``ValueError`` only for invalid arguments (weight outside [0, 1], negative reserve).
+        Raises ``ValueError`` only for invalid arguments (weight outside [0, 1], negative reserve,
+        invalid slot fixes). Fixed decisions remain hard constraints during diagnosis and fallback
+        checking; an infeasible set of otherwise valid fixes never raises.
         """
         if not 0.0 <= weight <= 1.0:
             raise ValueError(f"weight must be in [0, 1], got {weight}")
         if reserve_margin_kwh < 0:
             raise ValueError(f"reserve_margin_kwh must be >= 0, got {reserve_margin_kwh}")
+        if fixes is not None:
+            fixes.validate(assets)
         t0 = time.perf_counter()
         base = list(forecast.load.p50_kw)
         notes = self._context_notes(forecast, assets, reserve_margin_kwh)
@@ -106,10 +112,12 @@ class MilpPlanner:
             )
 
         if not problems:
-            m = build_model(forecast, signals, assets, weight, reserve_margin_kwh, scales)
+            m = build_model(forecast, signals, assets, weight, reserve_margin_kwh, scales, fixes=fixes)
             out = solve_model(m, base, self.time_limit_s)
             if out.status in ("optimal", "feasible") and out.schedule is not None:
-                violations = find_violations(out.schedule, forecast, signals, assets, reserve_margin_kwh)
+                violations = find_violations(
+                    out.schedule, forecast, signals, assets, reserve_margin_kwh, fixes=fixes
+                )
                 if not violations:
                     out.schedule.check_energy_balance(TOL)
                     extra = [out.message] if out.message else []
@@ -120,10 +128,12 @@ class MilpPlanner:
             elif out.status == "infeasible":
                 problems = ["no schedule satisfies every hard constraint (solver proved infeasibility)"]
             else:
-                return self._fallback(forecast, signals, assets, reserve_margin_kwh, out.message, finish)
+                return self._fallback(
+                    forecast, signals, assets, reserve_margin_kwh, out.message, finish, fixes
+                )
 
         return self._infeasible(
-            forecast, signals, assets, weight, reserve_margin_kwh, scales, problems, finish
+            forecast, signals, assets, weight, reserve_margin_kwh, scales, problems, finish, fixes
         )
 
     # ------------------------------------------------------------------ helpers
@@ -169,9 +179,9 @@ class MilpPlanner:
             ]
         return []
 
-    def _fallback(self, forecast, signals, assets, reserve, reason, finish) -> PlanResult:
+    def _fallback(self, forecast, signals, assets, reserve, reason, finish, fixes=None) -> PlanResult:
         sched = rule_based_schedule(forecast, signals, assets, reserve)
-        violations = find_violations(sched, forecast, signals, assets, reserve)
+        violations = find_violations(sched, forecast, signals, assets, reserve, fixes=fixes)
         if not violations:
             return finish(
                 sched,
@@ -189,24 +199,36 @@ class MilpPlanner:
                 f"{UNSAFE_PREFIX}: optimiser unavailable ({reason}) and the rule-based fallback breaks hard "
                 "constraints.",
                 *violations,
+                *(fixes.infeasible_notes(assets, reserve) if fixes else []),
             ],
             True,
         )
 
-    def _infeasible(self, forecast, signals, assets, weight, reserve, scales, problems, finish) -> PlanResult:
+    def _infeasible(
+        self, forecast, signals, assets, weight, reserve, scales, problems, finish, fixes=None
+    ) -> PlanResult:
         """Slack-mode solve to show where the day cannot be served; never relaxes anything silently."""
         h = slot_hours()
-        m = build_model(forecast, signals, assets, weight, reserve, scales, elastic=True)
+        m = build_model(forecast, signals, assets, weight, reserve, scales, elastic=True, fixes=fixes)
         out = solve_model(m, list(forecast.load.p50_kw), self.time_limit_s)
         if out.schedule is None:
             return self._fallback(
-                forecast, signals, assets, reserve, f"diagnostic solve failed: {out.message}", finish
+                forecast, signals, assets, reserve, f"diagnostic solve failed: {out.message}", finish, fixes
             )
         detail = []
         short = [t for t, v in enumerate(out.unserved_kw) if v * h > TOL]
         if short:
             kwh = sum(out.unserved_kw) * h
             detail.append(f"{kwh:.1f} kWh of demand cannot be served in slots {_ranges(short)}")
+            for fix in fixes.slots if fixes else ():
+                if fix.slot in short:
+                    minutes = fix.slot * slot_minutes()
+                    powers = ", ".join(f"{k}={v:g} kW" for k, v in fix.values().items())
+                    detail.append(
+                        f"Fixed slot {fix.slot} at {minutes // 60:02d}:{minutes % 60:02d} "
+                        f"({powers}): {out.unserved_kw[fix.slot]:.1f} kW of demand remains unserved "
+                        "with all permitted supply and battery SoC limits."
+                    )
         if out.ev_short_kwh > TOL:
             detail.append(f"EV departure energy short by {out.ev_short_kwh:.1f} kWh")
         return finish(
@@ -217,6 +239,7 @@ class MilpPlanner:
                 "shown is diagnostic only and does not balance supply and demand.",
                 *problems,
                 *detail,
+                *(fixes.infeasible_notes(assets, reserve) if fixes else []),
             ],
             True,
         )

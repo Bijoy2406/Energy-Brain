@@ -68,6 +68,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/simulate/cloud": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Re-plan a historical replay after a simulated cloud event
+         * @description A simulated cloud event reduces the historical forecast, not observed or live weather data.
+         *
+         *     Freeze controllable decisions before the event, then run Planner and Risk. A failed re-plan is
+         *     returned with 200 and honest diagnostic banners; always check safe and risk_ok.
+         */
+        post: operations["cloud_simulate_cloud_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/backtest": {
         parameters: {
             query?: never;
@@ -156,6 +179,19 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AffectedSlots */
+        AffectedSlots: {
+            /**
+             * Start
+             * @description first affected slot, inclusive (zero based)
+             */
+            start: number;
+            /**
+             * End
+             * @description last affected slot, exclusive; clipped to the day
+             */
+            end: number;
+        };
         /**
          * AssetConstraints
          * @description Asset agents output (#16): all hard limits the Planner must respect for the day at ``start``.
@@ -309,6 +345,119 @@ export interface components {
             misses: number;
             /** Inflight */
             inflight: number;
+        };
+        /**
+         * CloudEvent
+         * @example {
+         *       "date": "2024-07-02",
+         *       "w": 0.5
+         *     }
+         */
+        CloudEvent: {
+            /**
+             * Date
+             * Format: date
+             * @description planning day, YYYY-MM-DD, from 2022-01-01 to tomorrow (site time)
+             */
+            date: string;
+            /**
+             * W
+             * @description weight in [0, 1]: 1 = cheapest, 0 = cleanest; rounded to 0.01
+             */
+            w: number;
+            /**
+             * Time
+             * @description event start HH:MM, on the 15-minute grid, site time
+             */
+            time: string;
+            /**
+             * Drop Pct
+             * @description simulated reduction of all solar quantiles, percent
+             */
+            drop_pct: number;
+            /**
+             * Duration Minutes
+             * @description simulated duration; affected slots round up to whole slots and clip at end of day
+             * @default 120
+             */
+            duration_minutes: number;
+            /**
+             * Kind
+             * @description forecast what-if on a historical replay, not live data
+             * @default simulated cloud event
+             * @constant
+             */
+            kind: "simulated cloud event";
+        };
+        /**
+         * CloudRequest
+         * @description Simulated cloud event on a historical replay forecast; this is not live weather data.
+         * @example {
+         *       "date": "2024-07-02",
+         *       "w": 0.5
+         *     }
+         */
+        CloudRequest: {
+            /**
+             * Date
+             * Format: date
+             * @description planning day, YYYY-MM-DD, from 2022-01-01 to tomorrow (site time)
+             */
+            date: string;
+            /**
+             * W
+             * @description weight in [0, 1]: 1 = cheapest, 0 = cleanest; rounded to 0.01
+             */
+            w: number;
+            /**
+             * Time
+             * @description event start HH:MM, on the 15-minute grid, site time
+             */
+            time: string;
+            /**
+             * Drop Pct
+             * @description simulated reduction of all solar quantiles, percent
+             */
+            drop_pct: number;
+            /**
+             * Duration Minutes
+             * @description simulated duration; affected slots round up to whole slots and clip at end of day
+             * @default 120
+             */
+            duration_minutes: number;
+        };
+        /** CloudResponse */
+        CloudResponse: {
+            /** @description normal plan before the simulated cloud event */
+            before: components["schemas"]["PlanResponse"];
+            /** @description re-plan with reduced solar and the executed prefix frozen */
+            after: components["schemas"]["PlanResponse"];
+            /** @description echo of the simulated cloud event */
+            event: components["schemas"]["CloudEvent"];
+            /** @description range affected by the simulated cloud event */
+            affected_slots: components["schemas"]["AffectedSlots"];
+            /** @description after minus before planned totals */
+            delta: components["schemas"]["TotalsDelta"];
+            /**
+             * Replan Seconds
+             * @description wall time of re-planning only, excluding baseline and lock wait
+             */
+            replan_seconds: number;
+            /**
+             * Safe
+             * @description after plan meets hard constraints and passes Risk
+             */
+            safe: boolean;
+            /**
+             * Risk Ok
+             * @description after plan Risk verdict
+             */
+            risk_ok: boolean;
+            /**
+             * Banners
+             * @description simulation, fallback, infeasibility and Risk warnings
+             */
+            banners: string[];
         };
         /** DayInfo */
         DayInfo: {
@@ -695,6 +844,23 @@ export interface components {
              */
             end: string;
         };
+        /** OverrideImpact */
+        OverrideImpact: {
+            /**
+             * Applied
+             * @description operator decisions used as hard constraints
+             */
+            applied: components["schemas"]["SlotOverride"][];
+            /** @description normal plan totals for the same date and rounded weight */
+            baseline: components["schemas"]["Totals"];
+            /** @description override totals minus baseline totals */
+            delta: components["schemas"]["TotalsDelta"];
+            /**
+             * Feasible
+             * @description all planner hard constraints and overrides met; also check risk_ok
+             */
+            feasible: boolean;
+        };
         /** ParetoPoint */
         ParetoPoint: {
             /** Weight */
@@ -779,7 +945,7 @@ export interface components {
         };
         /**
          * PlanRequest
-         * @description A day and a cost/carbon weight.
+         * @description A normal plan or a re-solve with operator decisions fixed for selected slots.
          * @example {
          *       "date": "2024-07-02",
          *       "w": 0.5
@@ -797,6 +963,11 @@ export interface components {
              * @description weight in [0, 1]: 1 = cheapest, 0 = cleanest; rounded to 0.01
              */
             w: number;
+            /**
+             * Overrides
+             * @description optional unique slot overrides (at most 96)
+             */
+            overrides?: components["schemas"]["SlotOverride"][] | null;
         };
         /**
          * PlanResponse
@@ -817,7 +988,7 @@ export interface components {
             weight_requested: number;
             /**
              * Safe
-             * @description false = NOT SAFE TO EXECUTE (planner.is_safe): show the banner, never present the schedule as runnable
+             * @description false = NOT SAFE TO EXECUTE: show the banner, never present the schedule as runnable. Normal plans use planner.is_safe; what-if responses also require Risk to pass.
              */
             safe: boolean;
             /**
@@ -852,6 +1023,8 @@ export interface components {
              * @description when this plan was solved (site time)
              */
             computed_at: string;
+            /** @description operator override impact, otherwise null */
+            override?: components["schemas"]["OverrideImpact"] | null;
         };
         /**
          * PlanResult
@@ -989,6 +1162,27 @@ export interface components {
             /** Outage */
             outage: boolean[];
         };
+        /**
+         * SlotOverride
+         * @description Operator decisions for one slot; site asset limits are validated by the service.
+         */
+        SlotOverride: {
+            /**
+             * Time
+             * @description HH:MM on the 15-minute grid, site time (Asia/Dhaka)
+             */
+            time: string;
+            /**
+             * Battery Kw
+             * @description signed kW: positive charges, negative discharges, 0 idles; bounded by site limits
+             */
+            battery_kw?: number | null;
+            /**
+             * Generator Kw
+             * @description kW: 0 turns off, otherwise within the site's [min_kw, rated_kw]
+             */
+            generator_kw?: number | null;
+        };
         /** ToolCallRecord */
         ToolCallRecord: {
             /** Name */
@@ -1025,6 +1219,32 @@ export interface components {
             slot_cost_bdt: number[];
             /** Slot Co2 Kg */
             slot_co2_kg: number[];
+        };
+        /**
+         * TotalsDelta
+         * @description Signed planned totals, after minus before; no settlement against actuals.
+         */
+        TotalsDelta: {
+            /**
+             * Cost Bdt
+             * @description change in planned cost, BDT
+             */
+            cost_bdt: number;
+            /**
+             * Co2 Kg
+             * @description change in planned emissions, kg CO2
+             */
+            co2_kg: number;
+            /**
+             * Generator Hours
+             * @description change in generator running hours
+             */
+            generator_hours: number;
+            /**
+             * Diesel Litres
+             * @description change in planned diesel consumption, litres
+             */
+            diesel_litres: number;
         };
         /** ValidationError */
         ValidationError: {
@@ -1126,16 +1346,76 @@ export interface operations {
                     "application/json": components["schemas"]["PlanResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description invalid operator override (normal validation uses FastAPI) */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description too many uncached override computations */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description no forecast could be made (not even sample data) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    cloud_simulate_cloud_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CloudRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloudResponse"];
+                };
+            };
+            /** @description invalid simulated cloud event */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description too many uncached simulated cloud events */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description no forecast could be made */
             503: {
                 headers: {
                     [name: string]: unknown;

@@ -4,6 +4,9 @@
 Signal and Asset outputs it was solved on), so POST /plan and POST /explain describe the same object. Plans
 are cached in an LRU keyed by ``(date, w rounded to 0.01)`` (``ApiSettings.cache_size`` entries).
 
+**What-ifs.** Operator overrides and simulated cloud events use a separate bounded LRU and single-flight
+registry. Only their normal baseline comes from the default cache. The Explainer never reads what-ifs.
+
 **Thread safety.** Endpoints are sync, so FastAPI runs them in its thread pool and the event loop never
 blocks. The agents cache data frames and models lazily and HiGHS is not re-entrant, so one lock
 (``_plan_lock``) serialises every agent and solver call (a solve takes about 0.1-0.3 s). Requests for a key
@@ -26,7 +29,7 @@ import time
 from collections import OrderedDict, deque
 from collections.abc import Callable
 from concurrent.futures import Future
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from typing import Any
 
@@ -41,25 +44,35 @@ from energy_brain.api.days import (
 from energy_brain.api.demo_answers import StoredAnswer, find_stored, load_demo_answers, serve_stored
 from energy_brain.api.models import (
     FIRST_PLAN_DAY,
+    AffectedSlots,
     CacheStats,
+    CloudEvent,
+    CloudRequest,
+    CloudResponse,
     DayInfo,
     DaysResponse,
     ExplainRequest,
     ExplainResponse,
     FallbackInfo,
     HealthResponse,
+    OverrideImpact,
     ParetoPoint,
     ParetoResponse,
     PlanResponse,
+    SlotOverride,
+    TotalsDelta,
     WarmupStatus,
     last_plan_day,
+    time_slot,
     weight_key,
 )
 from energy_brain.api.settings import ApiSettings
 from energy_brain.explainer import ExplainerAgent, ExplainerAnswer, GroqClient, LLMError, PlanContext
 from energy_brain.explainer.agent import banners
 from energy_brain.planner import is_safe
-from energy_brain.timeaxis import site_tz
+from energy_brain.planner.fixes import SlotFix, SlotFixes
+from energy_brain.schemas import Forecast
+from energy_brain.timeaxis import n_slots, site_tz, slot_minutes
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +87,25 @@ PARETO_CACHE_SIZE = 64
 PARETO_REL_TOL = 1e-6
 
 _UNSET = object()
+WHATIF_CACHE_SIZE = 64
+SIMULATED_CLOUD = (
+    "This is a simulated cloud event: a solar forecast what-if on a historical replay day, "
+    "not live weather data."
+)
+
+
+class InvalidOverrides(ValueError):
+    """An operator decision is outside this site's asset limits."""
+
+
+@dataclass(frozen=True)
+class _ReplayInput:
+    """Return an existing input without re-reading or mutating historical data."""
+
+    value: Any
+
+    def run(self, start: datetime) -> Any:
+        return self.value
 
 
 class ServiceBusy(Exception):
@@ -172,6 +204,10 @@ class PlanService:
         self._pareto_cache: OrderedDict[date, ParetoResponse] = OrderedDict()
         self._pareto_inflight: dict[date, Future] = {}
         self.pareto_limiter = RateLimiter(6, 30, clock=clock)
+        self._whatif_cache: OrderedDict[tuple, Any] = OrderedDict()
+        self._whatif_inflight: dict[tuple, Future] = {}
+        self.override_limiter = RateLimiter(6, 30, clock=clock)
+        self.cloud_limiter = RateLimiter(6, 30, clock=clock)
         self._tier_by_date: dict[date, str] = {}
         self._signals_by_date: dict[date, tuple[Any, str | None]] = {}
         self.hits = 0
@@ -274,10 +310,14 @@ class PlanService:
         return CachedPlan(ctx, w, datetime.now(site_tz()), seconds)
 
     def plan_response(self, day: date, w: float) -> PlanResponse:
+        entry, cached = self.get_plan(day, w)
+        return self._response(day, w, entry, cached)
+
+    @staticmethod
+    def _response(day: date, w: float, entry: CachedPlan, cached: bool) -> PlanResponse:
         from energy_brain.forecast import parse_note as parse_forecast_note
         from energy_brain.signals import parse_note as parse_signal_note
 
-        entry, cached = self.get_plan(day, w)
         ctx = entry.context
         ff = _fallback(ctx.forecast.note if ctx.forecast.fallback_used else None, parse_forecast_note)
         if ctx.forecast.fallback_used and not ff.used:  # fallback without a note: still flag it
@@ -299,6 +339,189 @@ class PlanService:
             assets=ctx.assets,
             cached=cached,
             computed_at=entry.computed_at,
+        )
+
+    # ------------------------------------------------------------------ operator / simulated what-ifs
+
+    def _whatif(
+        self, key: tuple, compute: Callable[[], Any], limiter: RateLimiter, client: str | None
+    ) -> tuple[Any, bool]:
+        """Separate bounded LRU and single-flight; never wait or solve with the cache lock held.
+
+        Identical requests share a result. Only a new computation consumes rate-limit capacity.
+        These entries can never be read by the Explainer or replace a default plan.
+        """
+        with self._cache_lock:
+            entry = self._whatif_cache.get(key)
+            if entry is not None:
+                self._whatif_cache.move_to_end(key)
+                return entry, True
+            fut = self._whatif_inflight.get(key)
+            owner = fut is None
+            if owner:
+                if client is not None:
+                    limiter.hit(client)
+                fut = Future()
+                self._whatif_inflight[key] = fut
+        if not owner:
+            return fut.result(), True
+        try:
+            entry = compute()
+        except BaseException as exc:
+            with self._cache_lock:
+                self._whatif_inflight.pop(key, None)
+            fut.set_exception(exc)
+            raise
+        with self._cache_lock:
+            self._whatif_cache[key] = entry
+            while len(self._whatif_cache) > WHATIF_CACHE_SIZE:
+                self._whatif_cache.popitem(last=False)
+            self._whatif_inflight.pop(key, None)
+        fut.set_result(entry)
+        return entry, False
+
+    def _replan(self, before: CachedPlan, forecast: Forecast, fixes: SlotFixes) -> CachedPlan:
+        """Run Planner and Risk on exact replay inputs under the shared HiGHS lock.
+
+        Elapsed time covers the complete orchestration, excluding lock waits and the baseline solve.
+        HVAC has no thermal model; fixing its prefix does not imply comfort shifting.
+        """
+        ctx = before.context
+        with self._plan_lock:
+            agents = self._agents_locked()
+            t0 = time.perf_counter()
+            after = PlanContext.from_agents(
+                forecast.start,
+                before.weight,
+                forecast_agent=_ReplayInput(forecast),
+                signal_agent=_ReplayInput(ctx.signals),
+                assets=_ReplayInput(ctx.assets),
+                planner=agents["planner"],
+                risk=agents["risk"],
+                fixes=fixes,
+                backtest=ctx.backtest,
+            )
+            seconds = time.perf_counter() - t0
+        after = replace(after, signal_note=ctx.signal_note)
+        return CachedPlan(after, before.weight, datetime.now(site_tz()), seconds)
+
+    @staticmethod
+    def _whatif_warnings(response: PlanResponse) -> PlanResponse:
+        """Expose diagnostic notes and never label a Risk-failing what-if as safe."""
+        warnings = list(response.banners)
+        if not is_safe(response.plan):
+            warnings.extend(response.plan.notes)
+        if not response.risk_ok:
+            warnings.append("Risk check failed; this what-if must not be presented as safe to execute.")
+            warnings.extend(response.plan.risk.reasons)
+        return response.model_copy(
+            update={
+                "safe": response.safe and response.risk_ok,
+                "banners": list(dict.fromkeys(warnings)),
+            }
+        )
+
+    def override_response(
+        self, day: date, w: float, overrides: list[SlotOverride], client: str | None = None
+    ) -> PlanResponse:
+        """Re-solve with operator decisions. Only the baseline uses the normal plan cache."""
+        decisions = tuple(sorted((time_slot(o.time), o.battery_kw, o.generator_kw) for o in overrides))
+        key = ("override", day, weight_key(w), decisions)
+
+        def compute() -> tuple[CachedPlan, Any]:
+            before, _ = self.get_plan(day, w)
+            fixes = []
+            b = before.context.assets.battery
+            for t, battery, generator in decisions:
+                if battery is not None and not -b.max_discharge_kw <= battery <= b.max_charge_kw:
+                    raise InvalidOverrides(
+                        f"battery_kw must be in [-{b.max_discharge_kw:g}, {b.max_charge_kw:g}] kW (slot {t})"
+                    )
+                gen = before.context.assets.generator
+                if generator is not None and generator != 0 and not gen.min_kw <= generator <= gen.rated_kw:
+                    raise InvalidOverrides(
+                        f"generator_kw must be 0 or in [{gen.min_kw:g}, {gen.rated_kw:g}] kW (slot {t})"
+                    )
+                fixes.append(
+                    SlotFix(
+                        t,
+                        generator_kw=generator,
+                        battery_charge_kw=None if battery is None else max(0, battery),
+                        battery_discharge_kw=None if battery is None else max(0, -battery),
+                    )
+                )
+            fixed = SlotFixes(tuple(fixes))
+            try:
+                fixed.validate(before.context.assets)
+            except ValueError as exc:
+                raise InvalidOverrides(str(exc)) from None
+            after = self._replan(before, before.context.forecast, fixed)
+            return after, before.context.plan.totals
+
+        (after, baseline), cached = self._whatif(key, compute, self.override_limiter, client)
+        response = self._whatif_warnings(self._response(day, w, after, cached))
+        return response.model_copy(
+            update={
+                "override": OverrideImpact(
+                    applied=overrides,
+                    baseline=baseline,
+                    delta=TotalsDelta.between(baseline, after.context.plan.totals),
+                    feasible=is_safe(after.context.plan),
+                )
+            }
+        )
+
+    def cloud_response(self, req: CloudRequest, client: str | None = None) -> CloudResponse:
+        """Simulated cloud event on a historical replay day, not a change to observed data.
+
+        All solar quantiles drop equally in affected slots (duration rounds up to full slots and clips
+        at midnight). The executed controllable prefix is frozen, so battery SoC carries over through
+        the original dynamics. Risk may request more reserve without releasing those decisions.
+        """
+        key = ("cloud", req.date, weight_key(req.w), req.time, req.drop_pct, req.duration_minutes)
+
+        def compute() -> tuple[CachedPlan, bool, CachedPlan, int, int]:
+            before, cached = self.get_plan(req.date, req.w)
+            start = time_slot(req.time)
+            end = min(n_slots(), start + math.ceil(req.duration_minutes / slot_minutes()))
+            forecast = before.context.forecast
+            solar = forecast.solar.model_copy(
+                update={
+                    q: [
+                        v * (1 - req.drop_pct / 100) if start <= t < end else v
+                        for t, v in enumerate(getattr(forecast.solar, q))
+                    ]
+                    for q in ("p10_kw", "p50_kw", "p90_kw")
+                }
+            )
+            forecast = forecast.model_copy(update={"solar": solar})
+            fixes = SlotFixes.prefix(before.context.plan.schedule, start)
+            after = self._replan(before, forecast, fixes)
+            plan = after.context.plan.model_copy(
+                update={
+                    "notes": [*after.context.plan.notes, SIMULATED_CLOUD],
+                }
+            )
+            after = replace(after, context=replace(after.context, plan=plan))
+            return before, cached, after, start, end
+
+        (before, before_cached, after, start, end), cached = self._whatif(
+            key, compute, self.cloud_limiter, client
+        )
+        old = self._whatif_warnings(self._response(req.date, req.w, before, before_cached))
+        new = self._whatif_warnings(self._response(req.date, req.w, after, cached))
+        old = old.model_copy(update={"banners": [*old.banners, SIMULATED_CLOUD]})
+        new = new.model_copy(update={"banners": [*new.banners, SIMULATED_CLOUD]})
+        return CloudResponse(
+            before=old,
+            after=new,
+            event=CloudEvent(**req.model_dump()),
+            affected_slots=AffectedSlots(start=start, end=end),
+            delta=TotalsDelta.between(before.context.plan.totals, after.context.plan.totals),
+            replan_seconds=after.seconds,
+            safe=new.safe,
+            risk_ok=new.risk_ok,
+            banners=list(dict.fromkeys([*old.banners, *new.banners])),
         )
 
     # ------------------------------------------------------------------ Pareto

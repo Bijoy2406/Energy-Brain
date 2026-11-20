@@ -5,7 +5,8 @@ The agent outputs are reused unchanged from ``energy_brain.schemas`` (``PlanResu
 ``SignalTable``, ``AssetConstraints``) and ``energy_brain.explainer`` (``ExplainerAnswer``); nothing here
 changes them.
 
-Errors other than request validation (422, FastAPI's standard body) use :class:`ErrorBody`:
+Normal request validation keeps FastAPI's standard 422 body. What-if validation and service errors
+use :class:`ErrorBody`:
 ``{"detail": {"code": "...", "message": "...", "retry_after_s": null}}``.
 """
 
@@ -13,13 +14,13 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 from datetime import date as Date
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from energy_brain.explainer import ExplainerAnswer
-from energy_brain.schemas import AssetConstraints, Forecast, PlanResult, SignalTable
-from energy_brain.timeaxis import site_tz
+from energy_brain.schemas import AssetConstraints, Forecast, PlanResult, SignalTable, Totals
+from energy_brain.timeaxis import site_tz, slot_minutes
 
 #: First day the API plans: the start of the data the models and the outage calendar cover.
 FIRST_PLAN_DAY = date(2022, 1, 1)
@@ -64,7 +65,7 @@ class ErrorBody(_Model):
 # ---------------------------------------------------------------------------------------------- requests
 
 
-class PlanRequest(_Model):
+class _DayRequest(_Model):
     """A day and a cost/carbon weight."""
 
     date: Date = Field(description="planning day, YYYY-MM-DD, from 2022-01-01 to tomorrow (site time)")
@@ -88,7 +89,81 @@ class PlanRequest(_Model):
     )
 
 
-class ExplainRequest(PlanRequest):
+def time_slot(value: str) -> int:
+    """Strict HH:MM on the site's slot grid; 24:00 is not a slot start."""
+    import re
+
+    if not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", value):
+        raise ValueError("time must be HH:MM in site time (00:00..23:45)")
+    hour, minute = map(int, value.split(":"))
+    minutes = hour * 60 + minute
+    if minutes % slot_minutes():
+        raise ValueError(f"time must be on the {slot_minutes()}-minute grid (site time)")
+    return minutes // slot_minutes()
+
+
+def _aligned_time(value: str) -> str:
+    time_slot(value)
+    return value
+
+
+SlotTime = Annotated[str, AfterValidator(_aligned_time)]
+
+
+class SlotOverride(_Model):
+    """Operator decisions for one slot; site asset limits are validated by the service."""
+
+    time: SlotTime = Field(description="HH:MM on the 15-minute grid, site time (Asia/Dhaka)")
+    battery_kw: float | None = Field(
+        default=None,
+        allow_inf_nan=False,
+        description="signed kW: positive charges, negative discharges, 0 idles; bounded by site limits",
+    )
+    generator_kw: float | None = Field(
+        default=None,
+        ge=0,
+        allow_inf_nan=False,
+        description="kW: 0 turns off, otherwise within the site's [min_kw, rated_kw]",
+    )
+
+    @model_validator(mode="after")
+    def _has_decision(self) -> SlotOverride:
+        if self.battery_kw is None and self.generator_kw is None:
+            raise ValueError("override needs at least one of battery_kw or generator_kw")
+        return self
+
+
+class PlanRequest(_DayRequest):
+    """A normal plan or a re-solve with operator decisions fixed for selected slots."""
+
+    overrides: list[SlotOverride] | None = Field(
+        default=None,
+        max_length=96,
+        description="optional unique slot overrides (at most 96)",
+    )
+
+    @field_validator("overrides")
+    @classmethod
+    def _unique_slots(cls, value: list[SlotOverride] | None) -> list[SlotOverride] | None:
+        if value and len({v.time for v in value}) != len(value):
+            raise ValueError("duplicate override time; use one override per slot")
+        return value
+
+
+class CloudRequest(_DayRequest):
+    """Simulated cloud event on a historical replay forecast; this is not live weather data."""
+
+    time: SlotTime = Field(description="event start HH:MM, on the 15-minute grid, site time")
+    drop_pct: float = Field(ge=1, le=100, description="simulated reduction of all solar quantiles, percent")
+    duration_minutes: int = Field(
+        default=120,
+        ge=15,
+        le=720,
+        description="simulated duration; affected slots round up to whole slots and clip at end of day",
+    )
+
+
+class ExplainRequest(_DayRequest):
     """A question about the plan for (date, w)."""
 
     question: str = Field(description=f"operator question in English, 1-{MAX_QUESTION_CHARS} characters")
@@ -158,6 +233,26 @@ class FallbackInfo(_Model):
     fields: dict[str, str] | None = Field(description="the note parsed into key=value fields, or null")
 
 
+class TotalsDelta(_Model):
+    """Signed planned totals, after minus before; no settlement against actuals."""
+
+    cost_bdt: float = Field(description="change in planned cost, BDT")
+    co2_kg: float = Field(description="change in planned emissions, kg CO2")
+    generator_hours: float = Field(description="change in generator running hours")
+    diesel_litres: float = Field(description="change in planned diesel consumption, litres")
+
+    @classmethod
+    def between(cls, before: Totals, after: Totals) -> TotalsDelta:
+        return cls(**{k: getattr(after, k) - getattr(before, k) for k in cls.model_fields})
+
+
+class OverrideImpact(_Model):
+    applied: list[SlotOverride] = Field(description="operator decisions used as hard constraints")
+    baseline: Totals = Field(description="normal plan totals for the same date and rounded weight")
+    delta: TotalsDelta = Field(description="override totals minus baseline totals")
+    feasible: bool = Field(description="all planner hard constraints and overrides met; also check risk_ok")
+
+
 class PlanResponse(_Model):
     """One plan plus the agent outputs behind it (what the dashboard charts need)."""
 
@@ -165,8 +260,8 @@ class PlanResponse(_Model):
     weight: float = Field(description="weight the plan was solved with (w rounded to 0.01)")
     weight_requested: float
     safe: bool = Field(
-        description="false = NOT SAFE TO EXECUTE (planner.is_safe): show the banner, never present the "
-        "schedule as runnable"
+        description="false = NOT SAFE TO EXECUTE: show the banner, never present the schedule as runnable. "
+        "Normal plans use planner.is_safe; what-if responses also require Risk to pass."
     )
     risk_ok: bool = Field(description="the Risk agent's verdict (plan.risk.ok)")
     banners: list[str] = Field(
@@ -183,6 +278,35 @@ class PlanResponse(_Model):
     assets: AssetConstraints
     cached: bool = Field(description="served from the plan cache (not solved for this request)")
     computed_at: datetime = Field(description="when this plan was solved (site time)")
+    override: OverrideImpact | None = Field(
+        default=None, description="operator override impact, otherwise null"
+    )
+
+
+class CloudEvent(CloudRequest):
+    kind: Literal["simulated cloud event"] = Field(
+        default="simulated cloud event",
+        description="forecast what-if on a historical replay, not live data",
+    )
+
+
+class AffectedSlots(_Model):
+    start: int = Field(description="first affected slot, inclusive (zero based)")
+    end: int = Field(description="last affected slot, exclusive; clipped to the day")
+
+
+class CloudResponse(_Model):
+    before: PlanResponse = Field(description="normal plan before the simulated cloud event")
+    after: PlanResponse = Field(description="re-plan with reduced solar and the executed prefix frozen")
+    event: CloudEvent = Field(description="echo of the simulated cloud event")
+    affected_slots: AffectedSlots = Field(description="range affected by the simulated cloud event")
+    delta: TotalsDelta = Field(description="after minus before planned totals")
+    replan_seconds: float = Field(
+        description="wall time of re-planning only, excluding baseline and lock wait"
+    )
+    safe: bool = Field(description="after plan meets hard constraints and passes Risk")
+    risk_ok: bool = Field(description="after plan Risk verdict")
+    banners: list[str] = Field(description="simulation, fallback, infeasibility and Risk warnings")
 
 
 # ---------------------------------------------------------------------------------------------- /pareto

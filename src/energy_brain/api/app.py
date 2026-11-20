@@ -18,6 +18,8 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
@@ -69,6 +71,28 @@ def create_app(service: PlanService | None = None, settings: ApiSettings | None 
     )
 
     from energy_brain.forecast import ForecastUnavailableError
+
+    @app.exception_handler(RequestValidationError)
+    async def _invalid_whatif(request: Request, exc: RequestValidationError):
+        cloud = request.url.path == "/simulate/cloud"
+        override = (
+            request.url.path == "/plan"
+            and isinstance(exc.body, dict)
+            and exc.body.get("overrides") is not None
+        )
+        if cloud or override:
+            message = "; ".join(f"{'.'.join(str(k) for k in e['loc'][1:])}: {e['msg']}" for e in exc.errors())
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "detail": {
+                        "code": "invalid_cloud_event" if cloud else "invalid_overrides",
+                        "message": message,
+                        "retry_after_s": None,
+                    }
+                },
+            )
+        return await request_validation_exception_handler(request, exc)
 
     @app.exception_handler(ForecastUnavailableError)
     async def _no_forecast(request: Request, exc: ForecastUnavailableError) -> JSONResponse:

@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Protocol, runtime_checkable
 
+from energy_brain.planner.fixes import SlotFixes
 from energy_brain.schemas import AssetConstraints, Forecast, PlanResult, RiskReport, SignalTable
 
 
@@ -58,6 +59,7 @@ class PlannerAgent(Protocol):
         assets: AssetConstraints,
         weight: float,
         reserve_margin_kwh: float = 0.0,
+        fixes: SlotFixes | None = None,
     ) -> PlanResult:
         """Minimise ``weight * cost_bdt + (1 - weight) * co2_kg`` (weight 1 = cheapest, 0 = cleanest).
 

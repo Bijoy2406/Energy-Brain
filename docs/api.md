@@ -40,6 +40,8 @@ reserved, and the OpenAPI schema is unchanged. See [deployment](deploy.md) for t
 | --- | --- | --- | --- |
 | GET | `/days` | – | `DaysResponse`: demo days + tomorrow |
 | POST | `/plan` | `{"date": "YYYY-MM-DD", "w": 0..1}` | `PlanResponse` |
+| POST | `/plan` | `{"date", "w", "overrides": [{"time", "battery_kw", "generator_kw"}]}` | `PlanResponse` with override impact |
+| POST | `/simulate/cloud` | `{"date", "w", "time", "drop_pct", "duration_minutes": 120}` | before/after plans for a simulated cloud event |
 | GET | `/pareto` | `?date=YYYY-MM-DD` | `ParetoResponse`: sampled cost/CO2 frontier |
 | GET | `/backtest` | `?include_sha=false` | `BacktestSummary` |
 | GET | `/backtest/days` | `?weight=<0.5\|1\|0>` (default: headline weight) | `BacktestDaysResponse` |
@@ -126,6 +128,71 @@ curl -s localhost:8000/plan -H 'Content-Type: application/json' -d '{"date": "20
 - **Speed:** the first plan after startup loads the data and models (about 1 s), a new (date, w) takes about
   0.1–0.3 s, and a cached one a few milliseconds (`cached: true`). The demo days at w = 0.5, 0 and 1 are planned
   in the background at startup.
+
+### Operator overrides: `POST /plan`
+
+```json
+{"date": "2024-07-02", "w": 0.5,
+ "overrides": [{"time": "13:00", "battery_kw": 100, "generator_kw": 300}]}
+```
+
+Each override fixes one slot on the 15-minute grid in site time. Supply at least one power:
+`battery_kw` is signed (positive charges, negative discharges, zero idles); `generator_kw` is zero
+(off) or between the site's minimum and rated power. Battery power must stay within the site's
+charge/discharge ratings. Times must be unique, with at most 96 overrides. Invalid overrides return
+422 `invalid_overrides` in the `ErrorBody` format, with a readable message.
+
+The planner re-solves the day with those powers fixed. Grid import, solar dispatch and battery SoC
+remain free and must obey balance, dynamics and every other hard constraint. Risk checks the result
+and can ask for more reserve; every re-plan keeps the overrides. HVAC still uses its occupied power
+minimum: there is no thermal model or comfort shifting.
+
+The response appends `override`: `applied` echoes the decisions, `baseline` holds the normal plan's
+full totals at the same date and rounded weight, and `delta` gives signed changes in `cost_bdt`,
+`co2_kg`, `generator_hours` and `diesel_litres` (override minus baseline). `feasible` means the planner
+met all hard constraints, including the overrides. Check `risk_ok` as well: a Risk-failing override
+has `safe: false`, even when it is feasible at P50. An infeasible request returns 200 with
+`override.feasible: false`, `safe: false` and diagnostic banners. Those banners name the fixed slots
+and any battery reachability or unserved-demand diagnosis. A diagnostic schedule must not be run;
+it may fail to meet the requested overrides when even the elastic diagnosis has no solution.
+
+Without overrides (including null or an empty list), existing fields retain their normal meaning
+and order, and `override` is null. Override plans use a separate bounded cache and never replace a
+normal cached plan. The Explainer continues to read and explain only the normal plan; `/explain`
+does not accept overrides.
+
+### Simulated cloud event: `POST /simulate/cloud`
+
+```json
+{"date": "2024-07-02", "w": 0.5, "time": "13:00", "drop_pct": 60, "duration_minutes": 120}
+```
+
+This is a **simulated cloud event on a historical replay day**, applied to the solar forecast.
+It is not a new observation or live weather feed. `time` must be HH:MM on the 15-minute site grid;
+`drop_pct` is 1–100, and `duration_minutes` is 15–720 (default 120). Duration rounds up to whole
+slots, then clips at midnight. The event echo retains the requested duration; `affected_slots`
+reports the actual zero-based range as inclusive `start` and exclusive `end`.
+
+The normal plan at the same date and rounded weight is `before`. The simulation reduces solar
+P10, P50 and P90 equally in affected slots. All earlier battery charge/discharge, generator, EV
+and HVAC decisions are frozen to the before-plan. SoC follows the original battery dynamics,
+carrying the executed prefix into the re-plan. Planner and Risk then re-solve with these fixes
+retained on every reserve retry. There is no HVAC thermal model and no pre-cooling claim.
+
+The response contains `before` and `after` in the `PlanResponse` shape, `event`, `affected_slots`,
+`delta` (the same four totals, after minus before), `replan_seconds`, `safe`, `risk_ok` and `banners`.
+`replan_seconds` measures Planner/Risk orchestration only, excluding baseline work and solver-lock
+waits. A cached response retains the original computation time; `after.cached` identifies reuse.
+The demo target is below 10 seconds for 2024-07-02, w=0.5, 13:00, 60%, 120 minutes.
+An infeasible event still returns 200 with an unsafe diagnostic after-plan and explanatory banners.
+A Risk failure also makes the simulated after-plan's `safe` false. The original forecast and normal
+plan cache are unchanged.
+
+Both what-if paths use a separate shared LRU of 64 results and single-flight protection for matching
+requests. Each path has its own limit of **6 new computations per minute per client IP and 30 overall**;
+cache hits and concurrent followers are free. A limit returns 429 `rate_limited`, `retry_after_s` and
+`Retry-After`. Both paths share the existing agent/HiGHS lock. They never hold the cache lock while
+waiting for a solve. Invalid cloud bodies return 422 `invalid_cloud_event` using `ErrorBody`.
 
 ### `GET /pareto`
 
@@ -283,8 +350,8 @@ The question is about the **same cached plan** that `/plan` returns for (date, w
 
 | Status | Body | When |
 | --- | --- | --- |
-| 422 | FastAPI's standard `{"detail": [{"loc": [...], "msg": "...", "type": "..."}]}` | invalid body or query (bad date, date out of range, `w` outside [0, 1], empty or too-long question, unknown field) |
-| 404 / 422 / 429 / 503 / 500 | `{"detail": {"code": "...", "message": "...", "retry_after_s": null}}` | codes: `backtest_unavailable`, `weight_not_in_backtest`, `rate_limited`, `busy`, `forecast_unavailable`, `internal_error` |
+| 422 | FastAPI's standard `{"detail": [{"loc": [...], "msg": "...", "type": "..."}]}` | normal body or query validation (bad date, date out of range, `w` outside [0, 1], empty or too-long question, unknown field); what-if validation uses ErrorBody |
+| 404 / 422 / 429 / 503 / 500 | `{"detail": {"code": "...", "message": "...", "retry_after_s": null}}` | codes: `invalid_overrides`, `invalid_cloud_event`, `backtest_unavailable`, `weight_not_in_backtest`, `rate_limited`, `busy`, `forecast_unavailable`, `internal_error` |
 
 Error bodies never contain a stack trace or a secret. Details of an internal error go to the server log only.
 
