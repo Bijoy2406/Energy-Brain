@@ -92,7 +92,7 @@ passed the traceability check and is re-verified before it is served. Day 2024-0
 | risk | Is this plan safe, and what did the Risk agent find? | Safe; Risk ok under P10 solar / P50 load; 0 re-plans; no findings. |
 
 - **Purpose:** Show the "ask why" step of the demo and prove that the answers are grounded.
-- **Output summary:** A short verified answer, a "Verified" badge and a "Sources" list for each number.
+- **Output summary:** A short verified answer and a "Verified" badge; each number is highlighted and shows its tool and field on hover.
 - **Proprietary:** No
 - **Used by:** the chat suggestions and `reports/explainer_demo_answers.json`
 

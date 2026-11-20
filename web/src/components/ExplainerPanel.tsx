@@ -55,18 +55,6 @@ function AnswerMessage({ answer, date, weight, onSpeechUse }: { answer: Answer; 
     {answer.refusal_reason && refusals[answer.refusal_reason] && <p className="muted">{refusals[answer.refusal_reason]}</p>}
     <AnswerText text={answer.answer} provenance={answer.provenance} />
     <Listen text={answer.answer} onUse={onSpeechUse} />
-    <details className="answer-sources">
-      <summary>Sources</summary>
-      <h3>Tool calls</h3>
-      {answer.tool_calls?.length ? <ul>{answer.tool_calls.map((call, index) => <li key={index}>
-        <code>{call.name}</code><pre>{JSON.stringify(call.arguments ?? {}, null, 2)}</pre>
-      </li>)}</ul> : <p className="muted">No tool calls returned.</p>}
-      <table>
-        <caption>Answer provenance</caption>
-        <thead><tr><th scope="col">Text</th><th scope="col">Tool</th><th scope="col">Field</th></tr></thead>
-        <tbody>{answer.provenance?.map((source, index) => <tr key={index}><td>{source.text}</td><td>{source.tool}</td><td>{source.field}</td></tr>)}</tbody>
-      </table>
-    </details>
   </div>
 }
 
