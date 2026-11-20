@@ -3,7 +3,7 @@ import { useReducedMotion } from '../hooks/useReducedMotion'
 
 const steps = [
   { title: 'Problem', text: 'One Dhaka factory faces peak tariffs and load-shedding, with rooftop solar, a battery and diesel backup.', target: '.honesty-strip' },
-  { title: 'Side by side', text: 'Compare the baseline with Energy Brain on the same historical day.', target: '.same-day-card' },
+  { title: 'Side by side', text: 'Compare the baseline with Gridpilot AI on the same historical day.', target: '.same-day-card' },
   { title: 'Slider', text: 'Try moving Cost vs carbon and watch the schedule and API totals change.', target: '.weight-control input' },
   { title: 'Cloud event', text: '13:00 · 60 % solar drop · 2 hours. Press Trigger cloud event to simulate and check Risk.', target: '#cloud-event-panel' },
   { title: 'Ask why', text: 'The first suggested question is ready in chat. Review it, then press Send when you choose.', target: '.chat-panel textarea' },

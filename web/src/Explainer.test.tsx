@@ -265,7 +265,7 @@ it('opens a labelled dialog, closes from the header and launcher, and returns fo
   expect(launcher).toHaveAttribute('aria-expanded', 'false')
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   fireEvent.click(launcher)
-  const dialog = screen.getByRole('dialog', { name: 'Energy Brain Assistant' })
+  const dialog = screen.getByRole('dialog', { name: 'Gridpilot AI Assistant' })
   expect(dialog).toHaveAttribute('aria-modal', 'false')
   expect(launcher).toHaveAttribute('aria-controls', dialog.id)
   expect(launcher).toHaveAttribute('aria-expanded', 'true')
